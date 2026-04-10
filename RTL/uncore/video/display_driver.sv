@@ -1,54 +1,13 @@
 module display_driver (
-    input  logic clk,
+    input  logic p_clk,
+    input  logic s_clk,
     input  logic reset,
 
-    output logic pclk,
-    output logic blue,
-    output logic green,
-    output logic red
+    output logic serial_pclk,
+    output logic serial_blue,
+    output logic serial_green,
+    output logic serial_red
 );
-
-    ////////////////////////////////////////////////////////////////////////
-    //// clk gen ///////////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////
-
-    (* keep = 1 *) logic p_clk; // pixel clock
-    (* keep = 1 *) logic s_clk; // serializer clock (10 bit / p_clk) (DDR)
-
-    // Serial clock generator
-    rPLL #(
-        .FCLKIN("27.0"),
-        .IDIV_SEL(2),   // -> PFD = 9.0 MHz (range: 3-500 MHz)
-        .FBDIV_SEL(13), // -> CLKOUT = 126.0 MHz (range: 3.90625-625 MHz)
-        .ODIV_SEL(4)    // -> VCO = 504.0 MHz (range: 500-1250 MHz)
-    ) sclk_pll_i (
-        .CLKOUTP(),
-        .CLKOUTD(),
-        .CLKOUTD3(),
-        .RESET(1'b0),
-        .RESET_P(1'b0),
-        .CLKFB(1'b0),
-        .FBDSEL(6'b0),
-        .IDSEL(6'b0),
-        .ODSEL(6'b0),
-        .PSDA(4'b0),
-        .DUTYDA(4'b0),
-        .FDLY(4'b0),
-        .CLKIN(clk), // 27.0 MHz
-        .CLKOUT(s_clk), // 126.0 MHz
-        .LOCK()
-    );
-
-    // pixel clock generator
-    CLKDIV #(
-        .DIV_MODE("5")
-    ) pclk_div_i (
-        .HCLKIN(s_clk),
-        .RESETN(~reset),
-        .CALIB(1'b0),
-        .CLKOUT(p_clk) // 25.2 MHz
-    );
-
 
     ////////////////////////////////////////////////////////////////////////
     //// timing generator //////////////////////////////////////////////////
@@ -185,28 +144,28 @@ module display_driver (
         .s_clk,
         .reset,
         .symbol_data(10'b0000011111),
-        .serial_out(pclk)
+        .serial_out(serial_pclk)
     );
     tmds_serializer blue_serializer (
         .p_clk,
         .s_clk,
         .reset,
         .symbol_data(blue_symbol),
-        .serial_out(blue)
+        .serial_out(serial_blue)
     );
     tmds_serializer gree_serializer (
         .p_clk,
         .s_clk,
         .reset,
         .symbol_data(green_symbol),
-        .serial_out(green)
+        .serial_out(serial_green)
     );
     tmds_serializer red_serializer (
         .p_clk,
         .s_clk,
         .reset,
         .symbol_data(red_symbol),
-        .serial_out(red)
+        .serial_out(serial_red)
     );
 
 
