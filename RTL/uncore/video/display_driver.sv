@@ -83,8 +83,6 @@ module display_driver (
         if (reset) begin
             x_count <= '0;
             y_count <= '0;
-            x_pos   <= '0;
-            y_pos   <= '0;
             de      <= '0;
             hsync   <= '0;
             vsync   <= '0;
@@ -104,9 +102,6 @@ module display_driver (
             
             hsync <= (x_count >= H_SYNC_START) && (x_count < H_SYNC_END);
             vsync <= (y_count >= V_SYNC_START) && (y_count < V_SYNC_END);
-            
-            x_pos <= x_count;
-            y_pos <= y_count;
         end
     end
 
@@ -116,15 +111,13 @@ module display_driver (
 
     // scale 640x480 to 320x200 by duplicating pixels
     logic [15:0] frame_addr;
-    logic [8:0] x_pos_scaled;
-    logic [7:0] y_pos_scaled;
+    logic [8:0] x_scaled;
+    logic [7:0] y_scaled;
     
-    
-    // TODO convert this to LUT?
-    assign y_pos_scaled = (y_pos * 1705) >> 12; // y * 2.4
-    assign x_pos_scaled = x_pos[9:1]; // x * 2
+    assign x_scaled = x_count[9:1]; // x * 2
+    assign y_scaled = (y_count * 1705) >> 12; // y * 2.4
 
-    assign frame_addr = x_pos_scaled + (y_pos_scaled * 320);
+    assign frame_addr = x_scaled + (y_scaled * 320);
 
     ////////////////////////////////////////////////////////////////////////
     //// framebuffer ///////////////////////////////////////////////////////
@@ -134,14 +127,14 @@ module display_driver (
     logic [23:0] pixel;
 
     frame_buffer frame_buffer_i (
-        .clk(1'b0),
-        .reset(1'b0),
+        .clk(p_clk),
+        .reset,
         .read_addr(frame_addr),
         .read_data(color_idx)
     );
 
     palette palette_i (
-        .clk(1'b0),
+        .clk(p_clk),
         .read_addr(color_idx),
         .read_data(pixel)
     );
@@ -191,7 +184,7 @@ module display_driver (
         .p_clk,
         .s_clk,
         .reset,
-        .symbol_data(10'b1111100000),
+        .symbol_data(10'b0000011111),
         .serial_out(pclk)
     );
     tmds_serializer blue_serializer (
