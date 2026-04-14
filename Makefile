@@ -18,6 +18,8 @@ SRC = $(shell find $(SRC_DIR) -type f -name '*.sv')
 DEVICE = GW2AR-LV18QN88C8/I7
 BOARD = tangnano20k
 FAMILY = GW2A-18C
+# Dynamically locate the Gowin primitive definitions
+GOWIN_CELLS = $(shell yosys-config --datdir)/gowin/cells_sim.v
 
 # OSS CAD Suite commands - each wrapped with environment source
 YOSYS = source /opt/oss-cad-suite/environment && yosys
@@ -67,7 +69,7 @@ $(SYNTH_OUT): $(SRC) | $(BUILD_DIR)
 	@echo "========================================"
 	@echo "Running synthesis..."
 	@echo "========================================"
-	$(YOSYS) -l $(SYNTH_REPORT) -p "read_verilog -sv $(SRC); synth_gowin -top top -json $(SYNTH_OUT)"
+	$(YOSYS) -l $(SYNTH_REPORT) -m slang -p "read_slang --ignore-unknown-modules $(SRC); synth_gowin -top top -json $(SYNTH_OUT)"
 	@printf "\nSynthesis Warnings:\n"
 	@grep -i "warning" $(SYNTH_REPORT) || true
 
