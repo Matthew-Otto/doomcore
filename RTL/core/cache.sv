@@ -82,7 +82,6 @@ module icache (
     ////////////////////////////////////////////////////////////////////////
     //// Tag store /////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
-
     assign tag_write_index = rst_active ? rst_idx : write_index;
     assign tag_write_data = rst_active ? '0 : {cacheline_filled,write_tag};
 
@@ -91,7 +90,6 @@ module icache (
         .DATA_WIDTH(20)
     ) tag_store (
         .clk(core_clk),
-        .rst(rst),
         .wr_en(write_en || rst_active),
         .write_addr(tag_write_index),
         .write_data(tag_write_data),
@@ -110,7 +108,6 @@ module icache (
         .DATA_WIDTH(32)
     ) data_store (
         .clk(core_clk),
-        .rst(rst),
         .wr_en(write_en),
         .write_addr(write_bram_addr),
         .write_data(write_data),
@@ -118,7 +115,7 @@ module icache (
         .read_data(core_instr)
     );
 
-    assign core_instr_val = valid_tag && tag_match;
+    assign core_instr_val = ~rst_active && (valid_tag && tag_match);
 
 
     ////////////////////////////////////////////////////////////////////////

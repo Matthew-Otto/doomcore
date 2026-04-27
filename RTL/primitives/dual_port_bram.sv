@@ -21,10 +21,7 @@ module dual_port_bram #(
         if (wr_en)
             mem[write_addr] <= write_data;
         
-        if (rst)
-            read_data <= '0;
-        else
-            read_data <= (wr_en && (read_addr == write_addr)) ? write_data : mem[read_addr];
+        read_data <= (wr_en && (read_addr == write_addr)) ? write_data : mem[read_addr];
     end
 
 endmodule : dual_port_bram
