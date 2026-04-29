@@ -177,7 +177,7 @@ module top (
     `AXI_TYPEDEF_ALL(axi_bus, logic [AXI_ADDR_WIDTH-1:0], logic [AXI_ID_WIDTH-1:0], logic [AXI_DATA_WIDTH-1:0], logic [(AXI_DATA_WIDTH/8)-1:0], logic [AXI_USER_WIDTH-1:0])
 
     localparam axi_pkg::xbar_cfg_t XbarCfg = '{
-        NoSlvPorts:         3, // 3 Masters
+        NoSlvPorts:         2, // 2 Masters
         NoMstPorts:         4, // 4 Slaves
         MaxMstTrans:        4, // Max outstanding transactions
         MaxSlvTrans:        4,
@@ -204,10 +204,9 @@ module top (
         '{idx: 3'd3, start_addr: 32'h2000_0000, end_addr: 32'h2000_FFFF}  // Slave 3 (SD Card Interface)
     };
 
-    // Apply the memory map to all 3 masters so they can all see the same peripherals
+    // Apply the memory map to all masters so they can all see the same peripherals
     assign addr_map[0] = BASE_MAP;
     assign addr_map[1] = BASE_MAP;
-    assign addr_map[2] = BASE_MAP;
 
     AXI_BUS #(
         .AXI_ADDR_WIDTH ( AXI_ADDR_WIDTH ),
@@ -239,7 +238,6 @@ module top (
     );
 
 
-
     ////////////////////////////////////////////////////////////////////////
     //// CPU ///////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
@@ -248,13 +246,10 @@ module top (
         .core_clk,
         .bus_clk,
         .rst(reset),
+        .bozo_debug(led[0]),
         .icache_port(axi_slv_ports[0]),
-        .d_addr(led[2]),
-        .d_we(led[0]),
-        .d_wr_data(led[1]),
-        .d_rd_data(32'hdeadbeef)
+        .dcache_port(axi_slv_ports[1])
     );
-
 
 
     ////////////////////////////////////////////////////////////////////////

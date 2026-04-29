@@ -11,7 +11,7 @@ module core_top ();
         .AXI_DATA_WIDTH ( AXI_DATA_WIDTH ),
         .AXI_ID_WIDTH   ( AXI_ID_WIDTH   ),
         .AXI_USER_WIDTH ( AXI_USER_WIDTH )
-    ) axi_slv_ports ();
+    ) axi_slv_ports [1:0] ();
 
     logic core_clk;
     logic bus_clk;
@@ -26,11 +26,8 @@ module core_top ();
         .core_clk,
         .bus_clk,
         .rst(reset),
-        .icache_port(axi_slv_ports),
-        .d_addr,
-        .d_we,
-        .d_wr_data,
-        .d_rd_data
+        .icache_port(axi_slv_ports[0]),
+        .dcache_port(axi_slv_ports[1])
     );
 
 endmodule

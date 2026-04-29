@@ -5,7 +5,6 @@ module dual_port_bram #(
     DATA_WIDTH=32
 )(
     input  logic                  clk,
-    input  logic                  rst,
     input  logic                  wr_en,
     input  logic [ADDR_WIDTH-1:0] write_addr,
     input  logic [DATA_WIDTH-1:0] write_data,

@@ -4,6 +4,7 @@ module EXU (
     input  alu_op_t     alu_op,
     input  logic        is_imm,
     input  logic        is_store_op,
+    input  logic        is_jump_op,
     input  logic        is_auipc,
     input  comp_t       comp_op,
     input  logic        subtract,
@@ -17,63 +18,47 @@ module EXU (
     input  logic [31:0] imm_u,
     input  logic [31:0] imm_s,
     input  logic [31:0] PC,
-    output logic [31:0] rd_data
+    output logic [31:0] alu_out
 );
 
-    // BOZO TODO SET LESS THAN instructions
-    logic eq;
-    logic lt;
-    logic ltu;
-    logic geu;
-    
-    logic [31:0] b_mux;
-    logic [31:0] s_mux;
-    logic [31:0] adder_out;
-    logic        comp_out;
-    logic [31:0] shifter_out;
-    logic [31:0] xor_out;
-    logic [31:0] or_out;
-    logic [31:0] and_out;
-
-
-    assign b_mux = is_imm ? imm_i : rs2_data;
-    assign s_mux = is_store_op ? imm_s : b_mux;
-
+    ////////////////////////////////////////////////////////////////////////
+    //// Operand MUX ///////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
     logic [31:0] operand_a;
     logic [31:0] operand_b;
-    logic [31:0] operand_b_inv;
-    logic [32:0] full_sum;
 
-    assign operand_a = is_auipc ? PC : rs1_data;
-    assign operand_b = is_auipc ? imm_u : s_mux;
+    assign operand_a = (is_jump_op || is_auipc) ? PC : rs1_data;
 
-    assign operand_b_inv = operand_b ^ {32{subtract}};
-
-    assign full_sum = operand_a + operand_b_inv + subtract;
-    assign adder_out = full_sum[31:0];
-
-    assign eq = operand_a == operand_b;
-    assign lt = $signed(operand_a) < $signed(operand_b);
-    assign ltu = $unsigned(operand_a) < $unsigned(operand_b);
-    assign geu = ~ltu;
-
-    // BOZO non branch comp ops
-    always_comb begin : comparator
-        case (comp_op)
-            c_BEQ  : comp_out = eq;
-            c_BNE  : comp_out = ~eq;
-            c_SLT,
-            c_BLT  : comp_out = lt;
-            c_BGE  : comp_out = ~lt;
-            c_SLTU,
-            c_BLTU : comp_out = ltu;
-            c_BGEU : comp_out = geu;
+    always_comb begin
+        casez ({is_auipc, is_jump_op, is_imm, is_store_op})
+            4'b1??? : operand_b = imm_u;
+            4'b01?? : operand_b = 32'd4;
+            4'b0010 : operand_b = imm_i;
+            4'b0001 : operand_b = imm_s;
+            default : operand_b = rs2_data;
         endcase
     end
 
-    logic [4:0] shamt;
 
-    assign shamt = b_mux[4:0];
+    ////////////////////////////////////////////////////////////////////////
+    //// Add / Sub /////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
+    logic [31:0] operand_b_inv;
+    logic [32:0] full_sum;
+    logic [31:0] adder_out;
+
+    assign operand_b_inv = operand_b ^ {32{subtract}};
+    assign full_sum = operand_a + operand_b_inv + subtract;
+    assign adder_out = full_sum[31:0];
+
+
+    ////////////////////////////////////////////////////////////////////////
+    //// Shift /////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
+    logic [4:0]  shamt;
+    logic [31:0] shifter_out;
+
+    assign shamt = operand_b[4:0];
 
     always_comb begin
         if (shift_right) begin
@@ -90,10 +75,39 @@ module EXU (
         end
     end
 
-    assign xor_out = rs1_data ^ b_mux;
-    assign or_out  = rs1_data | b_mux;
-    assign and_out = rs1_data & b_mux;
 
+    ////////////////////////////////////////////////////////////////////////
+    //// Compare ///////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
+    logic        lt;
+    logic [31:0] comp_out;
+
+    always_comb begin
+        case (comp_op)
+            c_SLT  : lt = $signed(operand_a) < $signed(operand_b);
+            c_SLTU : lt = $unsigned(operand_a) < $unsigned(operand_b);
+            default: lt = 1'b0;
+        endcase
+    end
+
+    assign comp_out = {31'b0,lt};
+
+
+    ////////////////////////////////////////////////////////////////////////
+    //// Bitwise Ops ///////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
+    logic [31:0] xor_out;
+    logic [31:0] or_out;
+    logic [31:0] and_out;
+
+    assign xor_out = rs1_data ^ operand_b;
+    assign or_out  = rs1_data | operand_b;
+    assign and_out = rs1_data & operand_b;
+
+
+    ////////////////////////////////////////////////////////////////////////
+    //// Multiply //////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
     logic sign_ext_a;
     logic sign_ext_b;
     logic signed [32:0] multiplicand_a;
@@ -116,16 +130,20 @@ module EXU (
             multiplier_out = full_product[63:32];
     end
 
+    ////////////////////////////////////////////////////////////////////////
+    //// Output MUX ////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
     always_comb begin : out_mux
         case (alu_op)
-            ADDER_OP   : rd_data = adder_out;
-            MUL_OP     : rd_data = multiplier_out;
-            XOR_OP     : rd_data = xor_out;
-            OR_OP      : rd_data = or_out;
-            AND_OP     : rd_data = and_out;
-            SHIFTER_OP : rd_data = shifter_out;
-            LUI_OP     : rd_data = imm_u;
-            default    : rd_data = adder_out;
+            ADDER_OP   : alu_out = adder_out;
+            MUL_OP     : alu_out = multiplier_out;
+            XOR_OP     : alu_out = xor_out;
+            OR_OP      : alu_out = or_out;
+            AND_OP     : alu_out = and_out;
+            SHIFTER_OP : alu_out = shifter_out;
+            COMP_OP    : alu_out = comp_out;
+            LUI_OP     : alu_out = imm_u;
+            default    : alu_out = adder_out;
         endcase
     end
 

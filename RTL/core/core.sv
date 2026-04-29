@@ -5,23 +5,17 @@ module core (
     input  logic        bus_clk,
     input  logic        rst,
 
-    // instruction port
-    AXI_BUS.Master      icache_port,
+    output logic        bozo_debug,
 
-    // data port
-    output logic [31:0] d_addr,
-    output logic [3:0]  d_we,
-    output logic [31:0] d_wr_data,
-    input  logic [31:0] d_rd_data
+    AXI_BUS.Master      icache_port,
+    AXI_BUS.Master      dcache_port
 );
 
     // control
     logic        flush;
-    logic        st_en;
-    logic        ld_en;
+    logic        stall;
 
-    logic [4:0]  ld_rd;
-    logic [4:0]  dec_rd_addr;
+    logic [4:0]  ld_rd_addr;
     logic        is_writeback;
     
     alu_op_t     alu_op;
@@ -55,12 +49,13 @@ module core (
     logic        we;
     logic [4:0]  rd_addr;
     logic [31:0] rd_data;
+    logic [31:0] ls_rd_data;
     logic [4:0]  rs1_addr;
     logic [4:0]  rs2_addr;
     logic [31:0] rs1_data;
     logic [31:0] rs2_data;
 
-    logic [31:0] alu_rd_data;
+    logic [31:0] alu_out;
     logic [31:0] ld_rd_data;
 
     logic [31:0] imm_b;
@@ -70,6 +65,9 @@ module core (
     logic [31:0] imm_j;
 
 
+    // BOZO DEBUG anti-opt
+    assign bozo_debug = ^rs1_data;
+
 
     control control_unit (
         .flush,
@@ -77,14 +75,11 @@ module core (
         .ld_valid,
         .rs1_addr,
         .rs2_addr,
-        .ld_rd,
-        .reg_we(we),
-        .st_en,
-        .ld_en
+        .ld_rd_addr,
+        .reg_we(we)
     );
+    // BOZO TODO data hazards from load
 
-
-    // PC calc / front-end
     fetch fetch_unit (
         .core_clk,
         .bus_clk,
@@ -92,19 +87,17 @@ module core (
         .branch,
         .branch_target,
         .flush,
-        .ready(ready_EX),
+        .ready(~stall),
         .valid(valid_EX),
         .instr(instr_EX),
         .PC(PC_EX),
         .icache_port
     );
 
-    assign ready_EX = 1'b1; // BOZO TODO backpressure (from LS?)
 
-    // Decode
     decode decode_unit (
         .instr(instr_EX),
-        .rd_addr(dec_rd_addr),
+        .rd_addr,
         .rs1_addr,
         .rs2_addr,
         .is_writeback,
@@ -130,11 +123,11 @@ module core (
         .imm_j
     );
 
-    // execution unit
     EXU execution_unit (
         .alu_op,
         .is_imm,
         .is_store_op,
+        .is_jump_op,
         .is_auipc,
         .comp_op,
         .subtract,
@@ -147,10 +140,9 @@ module core (
         .imm_u,
         .imm_s,
         .PC(PC_EX),
-        .rd_data(alu_rd_data)
+        .alu_out
     );
 
-    // branch unit
     BRU branch_unit (
         .valid(valid_EX),
         .PC(PC_EX),
@@ -167,48 +159,39 @@ module core (
         .branch_target
     );
 
+    // BOZO TODO writeback jump ops
     regfile regfile_i (
         .clk(core_clk),
-        .we,
-        .rd_addr,
-        .rd_data,
+        .flush,
+        .ex_we(is_writeback),
+        .ex_rd_addr(rd_addr),
+        .ex_rd_data(alu_out),
+        .ld_we(ld_valid),
+        .ld_rd_addr,
+        .ld_rd_data,
         .rs1_addr,
         .rs2_addr,
         .rs1_data,
         .rs2_data
     );
 
-    // load / store
     LSU loadstore_unit (
-        .clk(core_clk),
+        .core_clk,
+        .bus_clk,
         .rst,
-        .st_en,
-        .ld_en,
-        .rd(dec_rd_addr),
-        .addr(alu_rd_data),
+        .flush,
+        .stall,
         .is_load_op,
-        .is_store_op,
         .load_op,
+        .is_store_op,
         .store_op,
+        .ls_addr(alu_out),
         .write_data(rs2_data),
+        .rd_addr,
         .ld_valid,
-        .ld_rd,
+        .ld_rd_addr,
         .ld_rd_data,
-        .d_addr,
-        .d_we,
-        .d_wr_data,
-        .d_rd_data
+        .dcache_port
     );
-
-    // BOZO TODO couple writeback tighter into LSU
-    assign rd_addr = ld_valid ? ld_rd : dec_rd_addr;
-
-    always_comb begin
-        casez ({ld_valid,is_jump_op})
-            2'b1? : rd_data = ld_rd_data;
-            //2'b01 : rd_data = PC_p4;
-            default: rd_data = alu_rd_data;
-        endcase
-    end
 
 endmodule : core

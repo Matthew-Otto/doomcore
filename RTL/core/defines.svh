@@ -1,14 +1,15 @@
 `ifndef DEFINES
 `define DEFINES
 
-typedef enum logic [6:0] {
-    ADDER_OP =   7'b0000001,
-    MUL_OP =     7'b0000010,
-    XOR_OP =     7'b0000100,
-    OR_OP =      7'b0001000,
-    AND_OP =     7'b0010000,
-    SHIFTER_OP = 7'b0100000,
-    LUI_OP =     7'b1000000
+typedef enum logic [7:0] {
+    ADDER_OP =   8'b00000001,
+    MUL_OP =     8'b00000010,
+    XOR_OP =     8'b00000100,
+    OR_OP =      8'b00001000,
+    AND_OP =     8'b00010000,
+    SHIFTER_OP = 8'b00100000,
+    COMP_OP =    8'b01000000,
+    LUI_OP =     8'b10000000
 } alu_op_t;
 
 typedef enum logic [2:0] {

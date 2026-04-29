@@ -43,12 +43,12 @@ module fetch #(
 
     assign fetch_PC_mux = branch ? branch_target : fetch_PC;
 
-    icache icache (
+    icache icache_i (
         .core_clk,
         .bus_clk,
         .rst,
         .core_addr(fetch_PC_mux),
-        .core_read_rdy(cache_ready),
+        .core_rdy(cache_ready),
         .core_read_val(~stall),
         .core_instr(cache_instr),
         .core_instr_val(cache_valid),

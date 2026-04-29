@@ -49,37 +49,32 @@ module decode (
     assign rs2_addr = instr[20+:5];
 
     // instructions that write to the register file
+    // (ALU and Jumps)
     assign is_writeback = ({op[4],op[2:1]} == 3'b010) | ({op[4:2],op[0]} == 4'b1101);
 
-    // alu decode
+    // ALU decode
     always_comb begin
         casez ({op,funct3,funct7[0]})
-            8'b01101_???_? : alu_op = LUI_OP;
-            8'b00101_???_?,
-            8'b0?000_???_?,
-            8'b0?100_000_0 : alu_op = ADDER_OP;
-            8'b01100_???_1 : alu_op = MUL_OP;
-            8'b0?100_010_0,
-            8'b0?100_011_0,
-            8'b0?100_100_0 : alu_op = XOR_OP;
-            8'b0?100_110_0 : alu_op = OR_OP;
-            8'b0?100_111_0 : alu_op = AND_OP;
-            8'b0?100_001_0,
-            8'b0?100_101_0 : alu_op = SHIFTER_OP;
-            default      : alu_op = ADDER_OP;
+            9'b01101_???_? : alu_op = LUI_OP;
+            9'b110?1_???_?,  // Jumps
+            9'b00101_???_?,  // AUIPC
+            9'b0?000_???_?,  // Load/Store
+            9'b0?100_000_0 : alu_op = ADDER_OP;
+            9'b0?100_01?_0 : alu_op = COMP_OP;
+            9'b01100_???_1 : alu_op = MUL_OP;
+            9'b0?100_010_0,
+            9'b0?100_011_0,
+            9'b0?100_100_0 : alu_op = XOR_OP;
+            9'b0?100_110_0 : alu_op = OR_OP;
+            9'b0?100_111_0 : alu_op = AND_OP;
+            9'b0?100_001_0,
+            9'b0?100_101_0 : alu_op = SHIFTER_OP;
+            default        : alu_op = ADDER_OP;
         endcase
     end
 
     // subtract enable
-    always_comb begin
-        casez ({op,funct3,funct7[5]})
-            9'b01100_000_1,
-            9'b0?100_010_?,
-            9'b0?100_011_?,
-            9'b11000_???_? : subtract = 1'b1;
-            default        : subtract = 1'b0;
-        endcase
-    end
+    assign subtract = {op,funct3,funct7[5]} == 9'b01100_000_1;
 
     // multiply type decode
     assign mul_op = mul_op_t'(funct3);
