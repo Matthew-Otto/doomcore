@@ -42,17 +42,17 @@ module top (
     logic p_clk;     // HDMI pixel clock
     logic s_clk;     // HDMI serializer clock (10 bit / p_clk) (DDR)
 
-    localparam CORE_CLK_FREQ = 329_400_000;
-    localparam BUS_CLK_FREQ = 164_700_000;
+    localparam CORE_CLK_FREQ = 80_000_000;
+    localparam BUS_CLK_FREQ = 160_000_000;
 
 `ifndef VERILATOR
-    //// System Clock Generator
+    //// Bus Clock Generator
     rPLL #(
         .FCLKIN("27.0"),
-        .IDIV_SEL(4),   // -> PFD = 5.4 MHz (range: 3-500 MHz)
-        .FBDIV_SEL(60), // -> CLKOUT = 329.4 MHz (range: 3.90625-625 MHz)
-        .ODIV_SEL(2)    // -> VCO = 658.8 MHz (range: 500-1250 MHz)
-    ) sysclk_pll_i (
+        .IDIV_SEL(8),   // -> PFD = 3.0 MHz (range: 3-500 MHz)
+        .FBDIV_SEL(52), // -> CLKOUT = 159.0 MHz (range: 3.90625-625 MHz)
+        .ODIV_SEL(4)    // -> VCO = 636.0 MHz (range: 500-1250 MHz)
+    ) busclk_pll (
         .CLKOUTP(),
         .CLKOUTD(),
         .CLKOUTD3(),
@@ -65,19 +65,19 @@ module top (
         .PSDA(4'b0),
         .DUTYDA(4'b0),
         .FDLY(4'b0),
-        .CLKIN(clk),      // 27.0 MHz
-        .CLKOUT(core_clk), // 329.4 MHz
+        .CLKIN(clk),
+        .CLKOUT(bus_clk),
         .LOCK()
     );
 
-    //// SDRAM Clock Generator
+    //// Core Clock Generator
     CLKDIV #(
         .DIV_MODE("2")
     ) bus_clk_div_i (
-        .HCLKIN(core_clk),
+        .HCLKIN(bus_clk),
         .RESETN(1'b1),
         .CALIB(1'b0),
-        .CLKOUT(bus_clk) // 164.7 MHz
+        .CLKOUT(core_clk)
     );
 
     //// Serial Clock Generator
@@ -141,7 +141,6 @@ module top (
     ////////////////////////////////////////////////////////////////////////
 
     logic reset_i;
-    logic reset_agg;
     logic reset;
 
     init_rst init_rst_i (
@@ -149,16 +148,7 @@ module top (
         .reset(reset_i)
     );
 
-    assign reset_agg = reset_i | btn1_db;
-
-    pulse_stretcher #(
-        .FACTOR(2)
-    ) reset_smear (
-        .clk(core_clk),
-        .pulse_in(reset_agg),
-        .pulse_out(reset)
-    );
-
+    assign reset = reset_i | btn1_db;
 
 
     ////////////////////////////////////////////////////////////////////////
@@ -180,13 +170,13 @@ module top (
         NoSlvPorts:         2, // 2 Masters
         NoMstPorts:         2, // 4 Slaves // BOZO 4
         MaxMstTrans:        1, // Max outstanding transactions
-        MaxSlvTrans:        1,
+        MaxSlvTrans:        2,
         FallThrough:        1'b0,
-        LatencyMode:        axi_pkg::CUT_ALL_AX,
+        LatencyMode:        axi_pkg::CUT_ALL_PORTS, // CUT_MST_PORTS
         PipelineStages:     32'd1,
         AxiIdWidthSlvPorts: AXI_ID_WIDTH,
         AxiIdUsedSlvPorts:  AXI_ID_WIDTH,
-        UniqueIds:          1'b0,
+        UniqueIds:          1'b1,
         AxiAddrWidth:       AXI_ADDR_WIDTH,
         AxiDataWidth:       AXI_DATA_WIDTH,
         NoAddrRules:        2  // One rule per slave // BOZO 4
@@ -199,8 +189,8 @@ module top (
 
     // Define the base memory map
     localparam rule_t [XbarCfg.NoAddrRules-1:0] ADDR_MAP = '{
-        '{idx: 1, start_addr: 32'h8000_0000, end_addr: 32'h8000_FFFF}, // Slave 0 (Boot ROM)
-        '{idx: 0, start_addr: 32'h0000_0000, end_addr: 32'h007F_FFFF} // Slave 1 (SDRAM Controller)
+        '{idx: 0, start_addr: 32'h1000_0000, end_addr: 32'h1000_FFFF}, // Slave 0 (Boot ROM)
+        '{idx: 1, start_addr: 32'h8000_0000, end_addr: 32'h807F_FFFF}  // Slave 1 (SDRAM Controller)
         //'{idx: 3'd2, start_addr: 32'h1000_0000, end_addr: 32'h1000_FFFF}, // Slave 2 (Frame Buffer)
         //'{idx: 3'd3, start_addr: 32'h2000_0000, end_addr: 32'h2000_FFFF}  // Slave 3 (SD Card Interface)
     };
@@ -211,14 +201,14 @@ module top (
         .AXI_DATA_WIDTH (AXI_DATA_WIDTH),
         .AXI_ID_WIDTH   (AXI_ID_WIDTH),
         .AXI_USER_WIDTH (AXI_USER_WIDTH)
-    ) axi_slv_ports [XbarCfg.NoSlvPorts] ();
+    ) axi_slv_ports [XbarCfg.NoSlvPorts-1:0] ();
 
     AXI_BUS #(
         .AXI_ADDR_WIDTH (AXI_ADDR_WIDTH),
         .AXI_DATA_WIDTH (AXI_DATA_WIDTH),
         .AXI_ID_WIDTH   (AXI_MST_ID_WIDTH),
         .AXI_USER_WIDTH (AXI_USER_WIDTH)
-    ) axi_mst_ports [XbarCfg.NoMstPorts] ();
+    ) axi_mst_ports [XbarCfg.NoMstPorts-1:0] ();
 
     axi_xbar_intf #(
         .AXI_USER_WIDTH (AXI_USER_WIDTH),
@@ -231,8 +221,8 @@ module top (
         .slv_ports             (axi_slv_ports),
         .mst_ports             (axi_mst_ports),
         .addr_map_i            (ADDR_MAP),
-        .en_default_mst_port_i (1'b0), 
-        .default_mst_port_i    ('0)            
+        .en_default_mst_port_i (1'b1),
+        .default_mst_port_i    ('d1) // Route bad addresses to ROM (Index 1)
     );
 
 
@@ -240,7 +230,11 @@ module top (
     //// CPU ///////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
-    core cpu (
+    core #(
+        .ADDR_WIDTH(AXI_ADDR_WIDTH),
+        .DATA_WIDTH(AXI_DATA_WIDTH),
+        .ID_WIDTH(AXI_MST_ID_WIDTH)
+    ) cpu (
         .core_clk,
         .bus_clk,
         .rst(reset),
