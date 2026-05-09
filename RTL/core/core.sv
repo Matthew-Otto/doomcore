@@ -66,8 +66,6 @@ module core #(
         .output_data({PC_DE,instr_DE})
     );
 
-    assign stall_DE = 1'b0; // BOZO TODO
-
     ////////////////////////////////////////////////////////////////////////
     //// Decode ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
@@ -162,6 +160,7 @@ module core #(
         .WIDTH($bits(DE_o))
     ) pipeline_de_ex (
         .clk(core_clk),
+        .en(~stall_DE),
         .in(DE_o),
         .out(EX_i)
     );
@@ -237,10 +236,13 @@ module core #(
     //// EX:LS Pipeline Register ///////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
+    logic stall_EX;
+
     pipeline_reg #(
         .WIDTH($bits(EX_o))
     ) pipeline_ex_ls (
         .clk(core_clk),
+        .en(~stall_EX),
         .in(EX_o),
         .out(LS_i)
     );
@@ -253,7 +255,7 @@ module core #(
     logic        ld_valid;
     logic        ld_inflight;
     logic [4:0]  ld_rd_addr;
-    logic stall_LS; // BOZO TODO
+    logic        ready_LS;
 
     LSU #(
         .ADDR_WIDTH(ADDR_WIDTH),
@@ -264,7 +266,7 @@ module core #(
         .bus_clk,
         .rst,
         .valid(LS_i.valid),
-        .stall(stall_LS),
+        .ready(ready_LS),
         .is_load_op(LS_i.is_load_op),
         .load_op(LS_i.load_op),
         .is_store_op(LS_i.is_store_op),
@@ -311,9 +313,14 @@ module core #(
 
     control control_i (
         .branch_EX,
+        .ready_LS,
+
         .flush_FE,
         .flush_DE,
         .flush_EX,
+
+        .stall_DE,
+        .stall_EX,
 
         // Source Bypass/Hazard
         .rs1_addr_DE(DE_o.rs1_addr),
@@ -325,8 +332,7 @@ module core #(
         .is_store_op_DE(DE_o.is_store_op),
         
         .forward_rs1_DE,
-        .forward_rs2_DE,
-        .stall_EX()
+        .forward_rs2_DE
     );
 
 endmodule : core

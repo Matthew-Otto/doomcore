@@ -66,16 +66,19 @@ module sdram_controller #(
         INIT,
         IDLE,
         ACTIVATE,
+        ACTIVATE_WAIT,
         PRECHARGE,
+        PRECHARGE_WAIT,
         READ,
         READ_BURST,
         WRITE,
         WRITE_BURST,
         REFRESH_PRECHARGE, // Precharge all before calling AutoRefresh
+        REFRESH_PRECHARGE_WAIT,
         REFRESH,           // AutoRefresh
-        WAIT,
+        REFRESH_WAIT,
         STOP
-    } state, next_state, return_state;
+    } state, next_state;
 
 
     //--------------------------------------------------------------------------
@@ -206,7 +209,6 @@ module sdram_controller #(
     // Address Decoding / Latch
     //--------------------------------------------------------------------------
     logic        latch_input;
-    logic        latched_read_cmd, latched_write_cmd;
     logic [1:0]  bank_addr, latched_bank_addr;
     logic [10:0] row_addr, latched_row_addr;
     logic [7:0]  col_addr, latched_col_addr;
@@ -216,14 +218,8 @@ module sdram_controller #(
 
     always_ff @(posedge mem_clk) begin
         if (reset) begin
-            latched_read_cmd <= 0;
-            latched_write_cmd <= 0;
-            latched_bank_addr <= 0;
-            latched_row_addr <= 0;
-            latched_col_addr <= 0;
+            {latched_bank_addr,latched_row_addr,latched_col_addr} <= '0;
         end else if (latch_input) begin
-            latched_read_cmd <= read;
-            latched_write_cmd <= write;
             {latched_bank_addr,latched_row_addr,latched_col_addr} <= {bank_addr,row_addr,col_addr};
         end
     end
@@ -241,11 +237,11 @@ module sdram_controller #(
             open_rows <= '0;
         end else begin
             case (state)
-                ACTIVATE  : begin
-                    open_rows[latched_bank_addr] <= 1'b1;
-                    open_row_addr[latched_bank_addr] <= latched_row_addr;
+                ACTIVATE : begin
+                    open_rows[bank_addr] <= 1'b1;
+                    open_row_addr[bank_addr] <= row_addr;
                 end
-                PRECHARGE : open_rows[latched_bank_addr] <= 1'b0;
+                PRECHARGE : open_rows[bank_addr] <= 1'b0;
                 REFRESH_PRECHARGE : open_rows <= 0;
             endcase
         end
@@ -322,11 +318,6 @@ module sdram_controller #(
     always_ff @(posedge mem_clk) begin
         if (reset)               state <= INIT;
         else if (delay_cnt == 0) state <= next_state;
-
-        if (|next_delay_cnt) begin
-            state <= WAIT;
-            return_state <= next_state;
-        end
     end
 
     always_ff @(posedge mem_clk) begin
@@ -361,10 +352,6 @@ module sdram_controller #(
         case (state)
             INIT : begin
                 if (init_done) next_state = IDLE;
-            end
-
-            WAIT : begin
-                next_state = return_state;
             end
 
             IDLE : begin
@@ -447,22 +434,37 @@ module sdram_controller #(
 
             ACTIVATE : begin
                 sdram_cmd = CMD_ACTIVE;
-                sdram_bank = latched_bank_addr;
-                sdram_addr = latched_row_addr;
+                sdram_bank = bank_addr;
+                sdram_addr = row_addr;
                 next_delay_cnt = tRCD - 1;
-                if (latched_read_cmd)
-                    next_state = READ;
-                else if (latched_write_cmd)
-                    next_state = WRITE;
-                else
-                    next_state = IDLE;
+                next_state = ACTIVATE_WAIT;
+            end
+
+            ACTIVATE_WAIT : begin
+                if (delay_cnt == 0) begin
+                    if (write) begin
+                        cmd_ready = 1;
+                        next_state = WRITE;
+                    end else if (read) begin
+                        cmd_ready = 1;
+                        next_state = READ;
+                    end else begin
+                        next_state = IDLE;
+                    end
+                end
             end
 
             PRECHARGE : begin
                 sdram_cmd = CMD_PRECHG;
-                sdram_bank = latched_bank_addr;
+                sdram_bank = bank_addr;
                 next_delay_cnt = tRP - 1;
-                next_state = ACTIVATE;
+                next_state = PRECHARGE_WAIT;
+            end
+
+            PRECHARGE_WAIT : begin
+                if (delay_cnt == 0) begin
+                    next_state = ACTIVATE;
+                end
             end
 
 
@@ -470,13 +472,25 @@ module sdram_controller #(
                 sdram_cmd = CMD_PRECHG;
                 sdram_addr = 11'b10000000000;
                 next_delay_cnt = tRP - 1;
-                next_state = REFRESH;
+                next_state = REFRESH_PRECHARGE_WAIT;
+            end
+
+            REFRESH_PRECHARGE_WAIT : begin
+                if (delay_cnt == 0) begin
+                    next_state = REFRESH;
+                end
             end
 
             REFRESH : begin
                 sdram_cmd = CMD_AUTOREF;
                 next_delay_cnt = tRFC - 1;
-                next_state = IDLE;
+                next_state = REFRESH_WAIT;
+            end
+
+            REFRESH_WAIT : begin
+                if (delay_cnt == 0) begin
+                    next_state = IDLE;
+                end
             end
         endcase
     end

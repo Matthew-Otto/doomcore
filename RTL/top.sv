@@ -170,13 +170,13 @@ module top (
         NoSlvPorts:         2, // 2 Masters
         NoMstPorts:         2, // 4 Slaves // BOZO 4
         MaxMstTrans:        1, // Max outstanding transactions
-        MaxSlvTrans:        2,
+        MaxSlvTrans:        1,
         FallThrough:        1'b0,
         LatencyMode:        axi_pkg::CUT_ALL_PORTS, // CUT_MST_PORTS
         PipelineStages:     32'd1,
         AxiIdWidthSlvPorts: AXI_ID_WIDTH,
         AxiIdUsedSlvPorts:  AXI_ID_WIDTH,
-        UniqueIds:          1'b1,
+        UniqueIds:          1'b1, // BOZO this might be okay to set if max transactions is 1
         AxiAddrWidth:       AXI_ADDR_WIDTH,
         AxiDataWidth:       AXI_DATA_WIDTH,
         NoAddrRules:        2  // One rule per slave // BOZO 4

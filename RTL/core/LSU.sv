@@ -21,7 +21,7 @@ module LSU #(
 
     // Core Control
     input  logic        valid,
-    output logic        stall,
+    output logic        ready,
 
     input  logic        is_load_op,
     input  load_op_t    load_op,
@@ -99,7 +99,7 @@ module LSU #(
     //// Dcache ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
     logic cache_rdy;
-    assign stall = valid && (is_store_op || is_load_op ) && ~cache_rdy;
+    assign ready = ~(valid && (is_store_op || is_load_op ) && ~cache_rdy);
     
     cache #(
         .MASTER_ID(1),

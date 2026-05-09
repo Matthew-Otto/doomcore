@@ -36,6 +36,7 @@ module cache #(
     AXI_BUS.Master      m_axi
 );
 
+    localparam CACHELINE_OFFSET = 5;
 
     ////////////////////////////////////////////////////////////////////////
     //// Reset Logic ///////////////////////////////////////////////////////
@@ -71,7 +72,10 @@ module cache #(
     logic [31:0] core_addr_buffer;
     logic [31:0] core_write_data_buffer;
     logic        cacheline_filled;
-    logic        cacheline_filled_core;
+    logic        cacheline_ready;
+    logic        write_committed;
+
+    
 
     always_ff @(posedge core_clk) begin
         if (rst_active)
@@ -83,8 +87,10 @@ module cache #(
 
         if (rst_active)
             write_in_progress <= 0;
-        else
-            write_in_progress <= core_rdy && |core_write_val;
+        else if (core_rdy && |core_write_val)
+            write_in_progress <= 1;
+        else if (write_committed)
+            write_in_progress <= 0;
 
         if (core_rdy && (core_read_val || |core_write_val))
             core_addr_buffer <= core_addr;
@@ -95,13 +101,13 @@ module cache #(
         end
     end
 
-    // strech cacheline_filled to make it safe for core_clk domain
+    // delay and strech cacheline_filled for core side logic
     pulse_stretcher #(
         .FACTOR(2)
     ) cacheline_filled_cdc (
         .clk(bus_clk),
         .pulse_in(cacheline_filled),
-        .pulse_out(cacheline_filled_core)
+        .pulse_out(cacheline_ready)
     );
 
 
@@ -113,7 +119,7 @@ module cache #(
     logic [7:0]  core_index, bus_index;
     logic [18:0] core_tag, bus_tag;
 
-    assign {core_tag, core_index, core_word_os, core_byte_os} = (cacheline_filled_core || write_in_progress) ? core_addr_buffer : core_addr;
+    assign {core_tag, core_index, core_word_os, core_byte_os} = (cacheline_ready || write_in_progress) ? core_addr_buffer : core_addr;
     
     logic [31:0] fill_addr, next_fill_addr;
     
@@ -163,7 +169,7 @@ module cache #(
     assign miss = ~hit;
 
     //// Core interface
-    assign core_rdy = ~rst_active & (~(read_in_progress | write_in_progress) | hit);
+    assign core_rdy = ~rst_active && ~write_in_progress && (~read_in_progress || hit);
     assign core_read_data_val = hit && read_in_progress;
 
 
@@ -200,7 +206,8 @@ module cache #(
         IDLE,
         READ_REQ,
         READ_WAIT,
-        PENDING_WRITE
+        PENDING_WRITE,
+        WRITE_SYNC
     } state, next_state;
 
     always_ff @(posedge bus_clk) begin
@@ -210,19 +217,19 @@ module cache #(
 
     always_ff @(posedge bus_clk) begin
         if (m_axi.ar_ready && m_axi.ar_valid) begin
-            fill_addr <= core_addr_buffer;
+            fill_addr <= {core_addr_buffer[31:CACHELINE_OFFSET], {CACHELINE_OFFSET{1'b0}}};
         end else begin
             fill_addr <= next_fill_addr;
         end
     end
 
-    assign m_axi.ar_addr  = core_addr_buffer;
+    assign m_axi.ar_addr  = {core_addr_buffer[31:CACHELINE_OFFSET], {CACHELINE_OFFSET{1'b0}}};
     assign m_axi.ar_len   = 8'd7;     // 8 beats (ARLEN is length - 1)
     assign m_axi.ar_size  = 3'b010;   // 4 bytes per beat (32-bit bus)
     assign m_axi.ar_burst = 2'b01;    // INCR burst type
     assign m_axi.ar_id    = MASTER_ID;
 
-    assign m_axi.aw_addr  = core_addr_buffer;
+    assign m_axi.aw_addr  = {core_addr_buffer[31:CACHELINE_OFFSET], {CACHELINE_OFFSET{1'b0}}};
     assign m_axi.aw_len   = '0;
     assign m_axi.aw_size  = '0;
     assign m_axi.aw_burst = '0;
@@ -242,10 +249,11 @@ module cache #(
         m_axi.w_valid = 1'b0;
         m_axi.r_ready  = 1'b0;
         cacheline_filled = 1'b0;
+        write_committed = 1'b0;
 
         case (state)
             IDLE : begin
-                if (read_in_progress && miss) begin
+                if (read_in_progress && miss && ~cacheline_ready) begin
                     m_axi.ar_valid = 1'b1;
                     if (m_axi.ar_ready)
                         next_state = READ_WAIT;
@@ -255,8 +263,12 @@ module cache #(
                     // BOZO the bus may accept aw and w at different times
                     m_axi.aw_valid = 1'b1;
                     m_axi.w_valid = 1'b1;
-                    if (~m_axi.aw_ready)
+                    if (~m_axi.aw_ready) begin
                         next_state = PENDING_WRITE;
+                    end else begin
+                        write_committed = 1'b1;
+                        next_state = WRITE_SYNC;
+                    end
                 end
             end
 
@@ -269,11 +281,12 @@ module cache #(
             READ_WAIT : begin
                 m_axi.r_ready = 1'b1;
                 if (m_axi.r_valid) begin
-                    next_fill_addr = fill_addr + 32'd4;
                     if (m_axi.r_last) begin
                         // only update tag on final beat of the burst
                         cacheline_filled = 1'b1;
                         next_state = IDLE;
+                    end else begin
+                        next_fill_addr = fill_addr + 32'd4;
                     end
                 end
             end
@@ -282,8 +295,15 @@ module cache #(
                 // BOZO the bus may accept aw and w at different times
                 m_axi.aw_valid = 1'b1;
                 m_axi.w_valid = 1'b1;
-                if (m_axi.aw_ready)
-                    next_state = IDLE;
+                if (m_axi.aw_ready) begin
+                    write_committed = 1'b1;
+                    next_state = WRITE_SYNC;
+                end
+            end
+
+            WRITE_SYNC : begin
+                write_committed = 1'b1;
+                next_state = IDLE;
             end
         endcase
     end
