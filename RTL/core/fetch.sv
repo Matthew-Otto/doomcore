@@ -11,8 +11,9 @@ module fetch #(
     parameter int ID_WIDTH
 ) (
     input  logic        core_clk,
+    input  logic        core_clk_rst,
     input  logic        bus_clk,
-    input  logic        rst,
+    input  logic        bus_clk_rst,
 
     input  logic        branch,
     input  logic [31:0] branch_target,
@@ -33,7 +34,7 @@ module fetch #(
     assign next_PC = (branch && ~cache_ready) ? branch_target : fetch_PC + 4;
 
     always_ff @(posedge core_clk) begin
-        if (rst) begin
+        if (core_clk_rst) begin
             PC_reg <= RESET_PC;
         end else if (branch || (~stall_FE && cache_ready)) begin
             PC_reg <= next_PC;
@@ -49,8 +50,9 @@ module fetch #(
         .ID_WIDTH(ID_WIDTH)
     ) icache_i (
         .core_clk,
-        .core_clk_rst(rst),
+        .core_clk_rst,
         .bus_clk,
+        .bus_clk_rst,
         .core_flush(branch),
         .core_rdy(cache_ready),
         .core_addr(fetch_PC),
@@ -63,7 +65,7 @@ module fetch #(
     );
 
     always_ff @(posedge core_clk) begin
-        if (rst)
+        if (core_clk_rst)
             PC_FE <= '0;
         else if (~stall_FE && cache_ready)
             PC_FE <= fetch_PC;

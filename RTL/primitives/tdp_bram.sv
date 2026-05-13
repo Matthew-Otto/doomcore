@@ -1,6 +1,6 @@
-// True dual-port, dual_clock bram
+// True dual-port, dual-clock BRAM
 
-module dpdc_bram #(
+module tdp_bram #(
     parameter ADDR_WIDTH = 8,
     parameter DATA_WIDTH = 32
 )(
@@ -39,4 +39,4 @@ module dpdc_bram #(
         rd_data_b <= wr_en_b ? wr_data_b : ram[addr_b];
     end
 
-endmodule : dpdc_bram
+endmodule : tdp_bram

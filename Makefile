@@ -75,8 +75,8 @@ $(SYNTH_OUT): $(SRC) | $(BUILD_DIR)
 #	$(YOSYS) -l $(SYNTH_REPORT) -m slang -p "read_verilog -sv RTL/uncore/video/frame_buffer.sv RTL/uncore/video/palette.sv; read_slang --ignore-unknown-modules --keep-hierarchy $(filter-out RTL/uncore/video/frame_buffer.sv RTL/uncore/video/palette.sv, $(SRC)); synth_gowin -top top -json $(SYNTH_OUT)"
 #	$(YOSYS) -l $(SYNTH_REPORT) -m slang -p "read_slang --keep-hierarchy $(SRC); synth_gowin -top top -json $(SYNTH_OUT)"
 	$(YOSYS) -l $(SYNTH_REPORT) -m slang -p "\
-        read_verilog -sv RTL/uncore/video/frame_buffer.sv RTL/uncore/video/palette.sv; \
-        read_slang --top top --keep-hierarchy $(filter-out RTL/uncore/video/frame_buffer.sv RTL/uncore/video/palette.sv, $(SRC)); \
+        read_verilog -sv RTL/uncore/video/palette.sv; \
+        read_slang --top top --keep-hierarchy $(filter-out RTL/uncore/video/palette.sv, $(SRC)); \
         hierarchy -check -top top; \
         synth_gowin -top top -json $(SYNTH_OUT); \
     "

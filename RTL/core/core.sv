@@ -6,8 +6,9 @@ module core #(
     parameter int ID_WIDTH
 ) (
     input  logic        core_clk,
+    input  logic        core_clk_rst,
     input  logic        bus_clk,
-    input  logic        rst,
+    input  logic        bus_clk_rst,
 
     AXI_BUS.Master      icache_port,
     AXI_BUS.Master      dcache_port
@@ -30,8 +31,9 @@ module core #(
         .ID_WIDTH(ID_WIDTH)
     ) fetch_unit (
         .core_clk,
+        .core_clk_rst,
         .bus_clk,
-        .rst,
+        .bus_clk_rst,
         .stall_FE,
         .branch(branch_EX),
         .branch_target(branch_target_EX),
@@ -56,7 +58,7 @@ module core #(
         .DATA_WIDTH(64)
     ) skid_buffer_i (
         .clk(core_clk),
-        .reset(rst || flush_DE),
+        .reset(core_clk_rst || flush_DE),
         .input_ready(),
         .input_valid(valid_FE),
         .input_data({PC_FE,instr_FE}),
@@ -256,8 +258,9 @@ module core #(
         .ID_WIDTH(ID_WIDTH)
     ) loadstore_unit (
         .core_clk,
+        .core_clk_rst,
         .bus_clk,
-        .rst,
+        .bus_clk_rst,
         .valid(LS_i.valid),
         .ready(ready_LS),
         .is_load_op(LS_i.is_load_op),

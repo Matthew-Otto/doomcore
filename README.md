@@ -9,3 +9,8 @@ The AXI crossbar used in this design comes from the pulp-platform: https://githu
 This repo contains a copy of the modified DOOM source code along with the original shareware WAD.
 
 The original DOOM sourcecode can be found at https://github.com/id-Software/DOOM
+
+
+#### Deps:
+
+[oss-cad-suite-build-bin](https://github.com/YosysHQ/oss-cad-suite-build)

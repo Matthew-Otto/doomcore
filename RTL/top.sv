@@ -137,18 +137,33 @@ module top (
 
 
     ////////////////////////////////////////////////////////////////////////
-    //// Reset /////////////////////////////////////////////////////////////
+    //// Resets ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
+    logic core_clk_rst;
+    logic bus_clk_rst;
+
+    logic async_reset;
     logic reset_i;
-    logic reset;
 
     init_rst init_rst_i (
         .clk(core_clk),
         .reset(reset_i)
     );
 
-    assign reset = reset_i | btn1_db;
+    assign async_reset = reset_i | btn1_db;
+
+    reset_sync core_reset_gen (
+        .clk(core_clk),
+        .async_reset,
+        .sync_reset(core_clk_rst)
+    );
+
+    reset_sync bus_reset_gen (
+        .clk(bus_clk),
+        .async_reset,
+        .sync_reset(bus_clk_rst)
+    );
 
 
     ////////////////////////////////////////////////////////////////////////
@@ -168,7 +183,7 @@ module top (
 
     localparam axi_pkg::xbar_cfg_t XbarCfg = '{
         NoSlvPorts:         2, // 2 Masters
-        NoMstPorts:         2, // 4 Slaves
+        NoMstPorts:         3, // 4 Slaves
         MaxMstTrans:        0, // Max outstanding transactions
         MaxSlvTrans:        1,
         FallThrough:        1'b0,
@@ -179,7 +194,7 @@ module top (
         UniqueIds:          1'b1,
         AxiAddrWidth:       AXI_ADDR_WIDTH,
         AxiDataWidth:       AXI_DATA_WIDTH,
-        NoAddrRules:        2  // One rule per slave // BOZO 4
+        NoAddrRules:        3  // One rule per slave // BOZO 4
     };
 
     localparam int AXI_MST_ID_WIDTH = AXI_ID_WIDTH + $clog2(XbarCfg.NoSlvPorts);
@@ -189,9 +204,9 @@ module top (
 
     // Define the base memory map
     localparam rule_t [XbarCfg.NoAddrRules-1:0] ADDR_MAP = '{
-        '{idx: 0, start_addr: 32'h1000_0000, end_addr: 32'h1000_FFFF}, // Slave 0 (Boot ROM)
-        '{idx: 1, start_addr: 32'h8000_0000, end_addr: 32'h807F_FFFF}  // Slave 1 (SDRAM Controller)
-        //'{idx: 3'd2, start_addr: 32'h1000_0000, end_addr: 32'h1000_FFFF}, // Slave 2 (Frame Buffer)
+        '{idx: 0, start_addr: 32'h0000_0000, end_addr: 32'h0000_FFFF}, // Slave 0 (Boot ROM)
+        '{idx: 1, start_addr: 32'h8000_0000, end_addr: 32'h807F_FFFF}, // Slave 1 (SDRAM Controller)
+        '{idx: 2, start_addr: 32'h1000_0000, end_addr: 32'h1000_FFFF}  // Slave 2 (Frame Buffer)
         //'{idx: 3'd3, start_addr: 32'h2000_0000, end_addr: 32'h2000_FFFF}  // Slave 3 (SD Card Interface)
     };
 
@@ -216,7 +231,7 @@ module top (
         .rule_t         (rule_t)
     ) i_axi_xbar (
         .clk_i                 (bus_clk),
-        .rst_ni                (~reset),
+        .rst_ni                (~bus_clk_rst),
         .test_i                (1'b0),
         .slv_ports             (axi_slv_ports),
         .mst_ports             (axi_mst_ports),
@@ -230,16 +245,51 @@ module top (
     //// CPU ///////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
+    AXI_BUS #(
+        .AXI_ADDR_WIDTH (AXI_ADDR_WIDTH),
+        .AXI_DATA_WIDTH (AXI_DATA_WIDTH),
+        .AXI_ID_WIDTH   (AXI_ID_WIDTH),
+        .AXI_USER_WIDTH (AXI_USER_WIDTH)
+    ) axi_core_bus [1:0] ();
+
     core #(
         .ADDR_WIDTH(AXI_ADDR_WIDTH),
         .DATA_WIDTH(AXI_DATA_WIDTH),
-        .ID_WIDTH(AXI_MST_ID_WIDTH)
+        .ID_WIDTH(AXI_ID_WIDTH)
     ) cpu (
         .core_clk,
+        .core_clk_rst,
         .bus_clk,
-        .rst(reset),
-        .icache_port(axi_slv_ports[0]),
-        .dcache_port(axi_slv_ports[1])
+        .bus_clk_rst,
+        .icache_port(axi_core_bus[0]),
+        .dcache_port(axi_core_bus[1])
+    );
+
+
+    // BOZO rip these out once resets are figured out
+    axi_multicut_intf #(
+        .ADDR_WIDTH (AXI_ADDR_WIDTH),
+        .DATA_WIDTH (AXI_DATA_WIDTH),
+        .ID_WIDTH   (AXI_ID_WIDTH),
+        .USER_WIDTH (AXI_USER_WIDTH),
+        .NUM_CUTS   (1)
+    ) icache_pipeline_cut (
+        .clk_i      (bus_clk),
+        .rst_ni     (~bus_clk_rst),
+        .in         (axi_core_bus[0]),
+        .out        (axi_slv_ports[0])
+    );
+    axi_multicut_intf #(
+        .ADDR_WIDTH (AXI_ADDR_WIDTH),
+        .DATA_WIDTH (AXI_DATA_WIDTH),
+        .ID_WIDTH   (AXI_ID_WIDTH),
+        .USER_WIDTH (AXI_USER_WIDTH),
+        .NUM_CUTS   (1)
+    ) dcache_pipeline_cut (
+        .clk_i      (bus_clk),
+        .rst_ni     (~bus_clk_rst),
+        .in         (axi_core_bus[1]),
+        .out        (axi_slv_ports[1])
     );
 
 
@@ -254,7 +304,7 @@ module top (
         .ID_WIDTH(AXI_MST_ID_WIDTH)
     ) bootrom_i (
         .clk(bus_clk),
-        .reset,
+        .reset(bus_clk_rst),
         .s_axi(axi_mst_ports[0])
     );
 
@@ -269,7 +319,7 @@ module top (
         .ID_WIDTH(AXI_MST_ID_WIDTH)
     ) sdram_i (
         .mem_clk(bus_clk),
-        .reset,
+        .reset(bus_clk_rst),
         .s_axi(axi_mst_ports[1]),
         .O_sdram_clk,
         .O_sdram_cke,
@@ -288,16 +338,18 @@ module top (
     //// Display ///////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
-    // display_driver display_driver_i (
-    //     .p_clk,
-    //     .s_clk,
-    //     .reset(reset),
-    //     .serial_pclk(tmds_clk_p),
-    //     .serial_blue(tmds_d0_p),
-    //     .serial_green(tmds_d1_p),
-    //     .serial_red(tmds_d2_p)
-    // );
-    // axi_mst_ports[2]
+    display_driver display_driver_i (
+        .bus_clk,
+        .bus_clk_rst,
+        .p_clk,
+        .s_clk,
+        .reset(reset),
+        .serial_pclk(tmds_clk_p),
+        .serial_blue(tmds_d0_p),
+        .serial_green(tmds_d1_p),
+        .serial_red(tmds_d2_p),
+        .bus_port(axi_mst_ports[2])
+    );
 
 
     ////////////////////////////////////////////////////////////////////////

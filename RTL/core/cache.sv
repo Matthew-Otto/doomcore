@@ -14,6 +14,7 @@
     // if no tag match, no nothing
 
 module cache #(
+    //parameter int LOG_SIZE,
     parameter int MASTER_ID,
     parameter int ADDR_WIDTH,
     parameter int DATA_WIDTH,
@@ -22,6 +23,7 @@ module cache #(
     input  logic        core_clk,
     input  logic        core_clk_rst,
     input  logic        bus_clk,
+    input  logic        bus_clk_rst,
 
     input  logic        core_flush,
     output logic        core_rdy,
@@ -36,6 +38,7 @@ module cache #(
     AXI_BUS.Master      m_axi
 );
 
+    // todo from log size
     localparam CACHELINE_OFFSET = 5;
 
     ////////////////////////////////////////////////////////////////////////
@@ -50,7 +53,7 @@ module cache #(
     logic rst_active;
 
     always_ff @(posedge bus_clk) begin
-        if (core_clk_rst) begin
+        if (bus_clk_rst) begin
             rst_active <= 1;
             rst_idx <= 8'd255;
         end else if (rst_active) begin
@@ -60,6 +63,8 @@ module cache #(
                 rst_idx <= rst_idx - 1;
         end
     end
+
+    // TODO reset CDC
 
 
     ////////////////////////////////////////////////////////////////////////
@@ -273,20 +278,34 @@ module cache #(
     logic        core_tag_rd_valid;
     logic [18:0] core_tag_rd_data;
 
-    dpdc_bram #(
+    // BOZO cleanup
+    // tdp_bram #(
+    //     .ADDR_WIDTH(8),
+    //     .DATA_WIDTH(20)
+    // ) tag_store (
+    //     .clk_a(core_clk),
+    //     .addr_a(core_index),
+    //     .wr_en_a('0),
+    //     .wr_data_a('0),
+    //     .rd_data_a({core_tag_rd_valid,core_tag_rd_data}),
+    //     .clk_b(bus_clk),
+    //     .addr_b(bus_tag_addr),
+    //     .wr_en_b(bus_tag_wr_en),
+    //     .wr_data_b(bus_tag_wr_data),
+    //     .rd_data_b()
+    // );
+
+    sdp_bram #(
         .ADDR_WIDTH(8),
         .DATA_WIDTH(20)
     ) tag_store (
-        .clk_a(core_clk),
-        .addr_a(core_index),
-        .wr_en_a('0),
-        .wr_data_a('0),
-        .rd_data_a({core_tag_rd_valid,core_tag_rd_data}),
-        .clk_b(bus_clk),
-        .addr_b(bus_tag_addr),
-        .wr_en_b(bus_tag_wr_en),
-        .wr_data_b(bus_tag_wr_data),
-        .rd_data_b()
+        .wr_clk(bus_clk),
+        .wr_en(bus_tag_wr_en),
+        .wr_addr(bus_tag_addr),
+        .wr_data(bus_tag_wr_data),
+        .rd_clk(core_clk),
+        .rd_addr(core_index),
+        .rd_data({core_tag_rd_valid,core_tag_rd_data})
     );
 
     assign hit = tag_read_ready && core_tag_rd_valid && (core_tag_buffer == core_tag_rd_data);
@@ -299,8 +318,8 @@ module cache #(
 
     assign bus_data_wr_en = m_axi.r_ready && m_axi.r_valid;
 
-    dpdc_bram_be #(
-        .ADDR_WIDTH(12),
+    tdp_bram_be #(
+        .ADDR_WIDTH(11),
         .DATA_WIDTH(32)
     ) data_store (
         .clk_a(core_clk),
@@ -398,12 +417,10 @@ module cache #(
             BUS_READ_WAIT : begin
                 m_axi.r_ready = 1'b1;
                 if (m_axi.r_valid) begin
+                    next_fill_addr = fill_addr + 32'd4;
                     if (m_axi.r_last) begin
-                        // only update tag on final beat of the burst
                         cacheline_filled = 1'b1;
                         next_bus_state = BUS_IDLE;
-                    end else begin
-                        next_fill_addr = fill_addr + 32'd4;
                     end
                 end
             end

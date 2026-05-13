@@ -1,6 +1,6 @@
-// True dual-port, dual_clock bram with write byte masking
+// True dual-port, dual-clock BRAM with write byte masking
 
-module dpdc_bram_be #(
+module tdp_bram_be #(
     parameter ADDR_WIDTH = 8,
     parameter DATA_WIDTH = 32
 )(
@@ -43,4 +43,4 @@ module dpdc_bram_be #(
         end
     end
 
-endmodule : dpdc_bram_be
+endmodule : tdp_bram_be
