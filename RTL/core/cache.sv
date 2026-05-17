@@ -117,7 +117,8 @@ module cache #(
         CORE_WRITE,
         CORE_WRITE_WAIT,
         CORE_READ,
-        CORE_CACHE_FILL
+        CORE_CACHE_FILL,
+        CORE_CACHE_FILL_FLUSHED
     } core_state, next_core_state;
 
     always_ff @(posedge core_clk) begin
@@ -222,7 +223,10 @@ module cache #(
                         next_core_state = CORE_IDLE;
                     end
 
-                // if miss, must fill cacheline from DRAM
+                end else if (core_flush) begin
+                    next_core_state = CORE_IDLE;
+
+                // if miss (and not flush), must fill cacheline from DRAM
                 end else begin
                     trigger_cache_fill = 1'b1;
                     core_addr_mux = core_addr_buffer;
@@ -232,7 +236,36 @@ module cache #(
             
             CORE_CACHE_FILL : begin
                 core_rdy = hit;
-                core_read_data_val = hit;
+                core_read_data_val = ~core_flush && hit;
+
+                if (hit) begin
+                    // pipeline reads
+                    if (core_read_val) begin
+                        latch_address = 1'b1;
+                        tag_read = 1'b1;
+                        next_core_state = CORE_READ;
+
+                    // pipeline writes
+                    end else if (core_write_val) begin
+                        latch_address = 1'b1;
+                        latch_write_data = 1'b1;
+                        tag_read = 1'b1;
+                        trigger_mem_write = 1'b1;
+                        next_core_state = CORE_WRITE;
+
+                    end else begin
+                        next_core_state = CORE_IDLE;
+                    end
+                end else begin
+                    tag_read = 1;
+                    core_addr_mux = core_addr_buffer;
+                    if (core_flush)
+                        next_core_state = CORE_CACHE_FILL_FLUSHED;
+                end
+            end
+
+            CORE_CACHE_FILL_FLUSHED : begin
+                core_rdy = hit;
 
                 if (hit) begin
                     // pipeline reads

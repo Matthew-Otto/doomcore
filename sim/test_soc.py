@@ -45,7 +45,7 @@ async def test_soc(dut):
 
     cocotb.start_soon(log_sim_speed(dut, clk))
 
-    for _ in range(100):
+    for _ in range(1000000):
         if dut.cpu.branch_unit.valid.value != 1:
             await RisingEdge(dut.cpu.branch_unit.valid)
             await ReadOnly()
