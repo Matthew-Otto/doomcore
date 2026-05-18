@@ -206,7 +206,7 @@ module cache #(
             end
             
             CORE_READ : begin
-                core_rdy = hit;
+                core_rdy = (hit || core_flush);
                 core_read_data_val = hit;
 
                 if (hit || core_flush) begin
@@ -231,6 +231,7 @@ module cache #(
                 end else begin
                     trigger_cache_fill = 1'b1;
                     core_ts_addr_mux = core_addr_buffer;
+                    core_ds_addr_mux = core_addr_buffer;
                     next_core_state = CORE_CACHE_FILL;
                 end
             end
@@ -260,6 +261,7 @@ module cache #(
                 end else begin
                     tag_read = 1;
                     core_ts_addr_mux = core_addr_buffer;
+                    core_ds_addr_mux = core_addr_buffer;
                     if (core_flush)
                         next_core_state = CORE_CACHE_FILL_FLUSHED;
                 end
@@ -289,6 +291,7 @@ module cache #(
                 end else begin
                     tag_read = 1;
                     core_ts_addr_mux = core_addr_buffer;
+                    core_ds_addr_mux = core_addr_buffer;
                 end
             end
         endcase
