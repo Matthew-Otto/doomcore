@@ -9,7 +9,7 @@ module palette (
     logic [23:0] rom [0:255];
 
     initial begin
-        $readmemh("default_palette.txt", rom);
+        $readmemh("RTL/uncore/video/default_palette.txt", rom);
     end
 
     assign read_data = rom[read_addr];

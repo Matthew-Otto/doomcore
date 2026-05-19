@@ -16,8 +16,17 @@ from cocotb.triggers import Timer, ReadOnly, ReadWrite, ClockCycles, RisingEdge,
 
 
 @cocotb.test()
-async def test_soc(dut):
+async def test_verify(dut):
     setup_file_logger(dut._log, "INFO")
+
+    firmware_dir = os.path.join(os.getcwd(), "../../firmware/bin")
+    bootloader = os.path.join(firmware_dir, "bootloader.elf")
+
+    if not os.path.isfile(bootloader):
+        assert 0, f"Error: bootloader file {bootloader} does not exist"
+
+    ref_sim = SpikeRunner(bootloader)
+
 
     dut._log.info(f"Executing Bootloader")
 
@@ -36,8 +45,33 @@ async def test_soc(dut):
 
     cocotb.start_soon(log_sim_speed(dut, clk))
 
-    await ClockCycles(clk, 1500000)
+    for _ in range(10000):
+        if dut.cpu.branch_unit.valid.value != 1:
+            await RisingEdge(dut.cpu.branch_unit.valid)
+            while dut.cpu.stall_EX.value:
+                await ClockCycles(clk, 1)
+            await ReadOnly()
+
+        ref_pc, ref_instr = ref_sim.step()
+        sim_pc = dut.cpu.branch_unit.PC.value
+        print(f"Ref: {hex(ref_pc)} | {hex(ref_instr)}")
+        print(f"Sim: {hex(sim_pc)}")
+        for idx,reg in enumerate(ref_sim.regfile):
+            print(f"{idx:02} | {hex(reg)}")
+
+        if ref_pc != sim_pc:
+            # for idx,reg in enumerate(ref_sim.last_regfile):
+            #     print(f"{idx:02} | {hex(reg)}")
+            await ClockCycles(clk, 2)
+            assert 0, f"Error: PC mismatch at time {get_sim_time(unit='ps')}ps"
+
+        await ClockCycles(clk, 1)
+        await ReadOnly()
+
+    #await ClockCycles(clk, 100000)
     await ClockCycles(clk, 10)
+
+    #sdram.dump(0x0, 0x100)
 
 
 
@@ -73,7 +107,7 @@ def test_runner():
             "-Wno-WIDTH",
             "--trace-fst",
             "--trace-structs",
-            "--threads", "2",
+            "--threads", "4",
             "--public-flat-rw",
         ],
     )

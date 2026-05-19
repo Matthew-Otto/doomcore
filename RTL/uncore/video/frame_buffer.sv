@@ -1,6 +1,4 @@
 module frame_buffer #(
-    parameter int ADDR_WIDTH,
-    parameter int DATA_WIDTH,
     parameter int ID_WIDTH
 ) (
     input  logic        bus_clk,

@@ -84,7 +84,8 @@ $(SYNTH_OUT): $(SRC) $(BOOTLOADER_HEX) | $(BUILD_DIR)
         read_verilog -sv RTL/uncore/video/palette.sv; \
         read_slang --top top --keep-hierarchy $(filter-out RTL/uncore/video/palette.sv, $(SRC)); \
         hierarchy -check -top top; \
-        synth_gowin -top top -json $(SYNTH_OUT); \
+		flatten; \
+        synth_gowin -top top -abc9 -json $(SYNTH_OUT); \
     "
 	@printf "\nSynthesis Warnings:\n"
 	@grep -i "warning" $(SYNTH_REPORT) || true
@@ -98,8 +99,9 @@ $(PNR_OUT): $(SYNTH_OUT) $(CST) $(SDC)
 		--device $(DEVICE) \
 		--vopt family=$(FAMILY) \
 		--vopt cst=$(CST) \
+		--log $(PNR_REPORT) \
 		--sdc $(SDC) \
-		--log $(PNR_REPORT)
+		-r
 	@printf "\nPnR Warnings:\n"
 	@grep -i "warning" $(PNR_REPORT) || true
 

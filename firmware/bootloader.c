@@ -53,28 +53,14 @@ void __attribute__((noreturn)) bootloader(void) {
     // ((void (*)(void))PROG_ENTRY)();
 
     // Draw a picture ot the frame buffer and then spin forever
-    volatile uint8_t *fb_addr = (volatile uint8_t *)0x30000000;
+    volatile uint32_t *fb_addr = (volatile uint32_t *)0x30000000;
 
-    for (int x = 0; x < 320; x++) {
-        for (int y = 0; y < 200; y++) {
-            if (x < 107) {
-                if (y < 100) {
-                    *fb_addr = 178; // #EF0000
-                } else {
-                    *fb_addr = 193; // #E7E7FF
-                }
-            } else if (x < 213) {
-                if (y < 100) {
-                    *fb_addr = 198; // #5353FF
-                } else {
-                    *fb_addr = 173; // #FF5F5F
-                }
+    for (int y = 0; y < 200; y++) {
+        for (int x = 0; x < 80; x++) {
+            if (x < 40) {
+                *fb_addr = 0xfefefefe; // #6F006B
             } else {
-                if (y < 100) {
-                    *fb_addr = 160; // #FFFF73
-                } else {
-                    *fb_addr = 116; // #5BBF4F
-                }
+                *fb_addr = 0xc0c0c0c0; // #E7E7FF
             }
 
             fb_addr += 1;

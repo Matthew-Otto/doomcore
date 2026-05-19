@@ -169,20 +169,22 @@ module top #(
     );
 
     reset_sync display_reset_gen (
-        .clk(bus_clk),
+        .clk(p_clk),
         .async_reset,
         .sync_reset(p_clk_rst)
     );
 
     //// Manual Reset Duplication
-    logic bus_clk_rst_core;
-    logic bus_clk_rst_xbar;
-    logic bus_clk_rst_rom;
-    logic bus_clk_rst_display;
+    (* keep = "true" *) logic bus_clk_rst_core;
+    (* keep = "true" *) logic bus_clk_rst_xbar_n;
+    (* keep = "true" *) logic bus_clk_rst_sdram;
+    (* keep = "true" *) logic bus_clk_rst_rom;
+    (* keep = "true" *) logic bus_clk_rst_display;
 
     always_ff @(posedge bus_clk) begin
         bus_clk_rst_core <= bus_clk_rst;
-        bus_clk_rst_xbar <= bus_clk_rst;
+        bus_clk_rst_xbar_n <= ~bus_clk_rst;
+        bus_clk_rst_sdram <= bus_clk_rst;
         bus_clk_rst_rom <= bus_clk_rst;
         bus_clk_rst_display <= bus_clk_rst;
     end
@@ -253,7 +255,7 @@ module top #(
         .rule_t         (rule_t)
     ) i_axi_xbar (
         .clk_i                 (bus_clk),
-        .rst_ni                (~bus_clk_rst_xbar),
+        .rst_ni                (bus_clk_rst_xbar_n),
         .test_i                (1'b0),
         .slv_ports             (axi_slv_ports),
         .mst_ports             (axi_mst_ports),
@@ -282,7 +284,7 @@ module top #(
         .core_clk,
         .core_clk_rst,
         .bus_clk,
-        .bus_clk_rst(bus_clk_rst_xbar),
+        .bus_clk_rst(bus_clk_rst_core),
         .icache_port(axi_slv_ports[0]),
         .dcache_port(axi_slv_ports[1])
     );
@@ -293,7 +295,7 @@ module top #(
     ////////////////////////////////////////////////////////////////////////
 
     axi4_boot_rom #(
-        .LOG_SIZE(12),
+        .LOG_SIZE(10),
         .ADDR_WIDTH(AXI_ADDR_WIDTH),
         .DATA_WIDTH(AXI_DATA_WIDTH),
         .ID_WIDTH(AXI_MST_ID_WIDTH),
@@ -315,7 +317,7 @@ module top #(
         .ID_WIDTH(AXI_MST_ID_WIDTH)
     ) sdram_i (
         .mem_clk(bus_clk),
-        .reset(bus_clk_rst_xbar),
+        .reset(bus_clk_rst_sdram),
         .s_axi(axi_mst_ports[1]),
         .O_sdram_clk,
         .O_sdram_cke,
@@ -335,8 +337,6 @@ module top #(
     ////////////////////////////////////////////////////////////////////////
 
     display_driver #(
-        .ADDR_WIDTH(AXI_ADDR_WIDTH),
-        .DATA_WIDTH(AXI_DATA_WIDTH),
         .ID_WIDTH(AXI_MST_ID_WIDTH)
     ) display_driver_i (
         .bus_clk,

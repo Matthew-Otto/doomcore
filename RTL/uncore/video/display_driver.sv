@@ -1,6 +1,4 @@
 module display_driver #(
-    parameter int ADDR_WIDTH   = 32,
-    parameter int DATA_WIDTH   = 32,
     parameter int ID_WIDTH     = 1
 ) (
     input  logic bus_clk,
@@ -43,8 +41,6 @@ module display_driver #(
     logic       vsync;
 
     logic [9:0] x_count, y_count;
-    logic [9:0] x_pos, y_pos;
-
 
     always_ff @(posedge p_clk) begin
         if (p_clk_rst) begin
@@ -94,8 +90,6 @@ module display_driver #(
     logic [23:0] pixel;
 
     frame_buffer #(
-        .ADDR_WIDTH(ADDR_WIDTH),
-        .DATA_WIDTH(DATA_WIDTH),
         .ID_WIDTH(ID_WIDTH)
     ) frame_buffer_i (
         .bus_clk,
