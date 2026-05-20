@@ -34,29 +34,36 @@ module top #(
     output logic [5:0] led
 );
 
-
     ////////////////////////////////////////////////////////////////////////
     //// Clocks ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
-    logic core_clk;   // main system clock
-    logic bus_clk; // sdram clock
+    logic core_clk;  // main system clock
+    logic bus_clk;   // bus clock
     logic p_clk;     // HDMI pixel clock
     logic s_clk;     // HDMI serializer clock (10 bit / p_clk) (DDR)
+
+    logic core_pll_lock;
+    logic sclk_pll_lock;
 
     localparam CORE_CLK_FREQ = 80_000_000;
     localparam BUS_CLK_FREQ = 160_000_000;
 
 `ifndef VERILATOR
-    //// Bus Clock Generator
+    //// System Clock Generator
     rPLL #(
         .FCLKIN("27.0"),
-        .IDIV_SEL(8),   // -> PFD = 3.0 MHz (range: 3-500 MHz)
+        .IDIV_SEL(8),    // -> PFD = 3.0 MHz (range: 3-500 MHz)
         .FBDIV_SEL(52), // -> CLKOUT = 159.0 MHz (range: 3.90625-625 MHz)
-        .ODIV_SEL(4)    // -> VCO = 636.0 MHz (range: 500-1250 MHz)
+        .ODIV_SEL(4), // -> VCO = 636.0 MHz (range: 500-1250 MHz)
+        
+        // .IDIV_SEL(7), // -> PFD = 3.375 MHz (range: 3-500 MHz)
+        // .FBDIV_SEL(36), // -> CLKOUT = 124.875 MHz (range: 3.90625-625 MHz)
+        // .ODIV_SEL(8), // -> VCO = 999.0 MHz (range: 500-1250 MHz)
+        .DYN_SDIV_SEL(2) // -> Divide CLKOUT by 2
     ) busclk_pll (
         .CLKOUTP(),
-        .CLKOUTD(),
+        .CLKOUTD(core_clk),
         .CLKOUTD3(),
         .RESET(1'b0),
         .RESET_P(1'b0),
@@ -69,17 +76,7 @@ module top #(
         .FDLY(4'b0),
         .CLKIN(clk),
         .CLKOUT(bus_clk),
-        .LOCK()
-    );
-
-    //// Core Clock Generator
-    CLKDIV #(
-        .DIV_MODE("2")
-    ) bus_clk_div_i (
-        .HCLKIN(bus_clk),
-        .RESETN(1'b1),
-        .CALIB(1'b0),
-        .CLKOUT(core_clk)
+        .LOCK(core_pll_lock)
     );
 
     //// Serial Clock Generator
@@ -103,7 +100,7 @@ module top #(
         .FDLY(4'b0),
         .CLKIN(clk),    // 27.0 MHz
         .CLKOUT(s_clk), // 126.0 MHz
-        .LOCK()
+        .LOCK(sclk_pll_lock)
     );
 
     //// Pixel Clock Generator
@@ -111,7 +108,7 @@ module top #(
         .DIV_MODE("5")
     ) pclk_div_i (
         .HCLKIN(s_clk),
-        .RESETN(1'b1),
+        .RESETN(sclk_pll_lock),
         .CALIB(1'b0),
         .CLKOUT(p_clk) // 25.2 MHz
     );
@@ -149,12 +146,18 @@ module top #(
     logic async_reset;
     logic reset_i;
 
-    init_rst init_rst_i (
+    init_rst #(
+        .DELAY(50)
+    ) init_rst_i (
         .clk(core_clk),
         .reset(reset_i)
     );
 
-    assign async_reset = reset_i | btn1_db;
+`ifndef VERILATOR
+    assign async_reset = reset_i | btn1_db;// | ~core_pll_lock | ~sclk_pll_lock;
+`else
+    assign async_reset = reset_i | btn1_db; 
+`endif
 
     reset_sync core_reset_gen (
         .clk(core_clk),
@@ -175,6 +178,7 @@ module top #(
     );
 
     //// Manual Reset Duplication
+    (* keep = "true" *) logic bus_clk_rst_p1;
     (* keep = "true" *) logic bus_clk_rst_core;
     (* keep = "true" *) logic bus_clk_rst_xbar_n;
     (* keep = "true" *) logic bus_clk_rst_sdram;
@@ -182,17 +186,28 @@ module top #(
     (* keep = "true" *) logic bus_clk_rst_display;
 
     always_ff @(posedge bus_clk) begin
-        bus_clk_rst_core <= bus_clk_rst;
-        bus_clk_rst_xbar_n <= ~bus_clk_rst;
-        bus_clk_rst_sdram <= bus_clk_rst;
-        bus_clk_rst_rom <= bus_clk_rst;
-        bus_clk_rst_display <= bus_clk_rst;
+        bus_clk_rst_p1 <= bus_clk_rst;
+        bus_clk_rst_core <= bus_clk_rst_p1;
+        bus_clk_rst_xbar_n <= ~bus_clk_rst_p1;
+        bus_clk_rst_sdram <= bus_clk_rst_p1;
+        bus_clk_rst_rom <= bus_clk_rst_p1;
+        bus_clk_rst_display <= bus_clk_rst_p1;
     end
+
 
 
     ////////////////////////////////////////////////////////////////////////
     //// Memory Bus ////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
+
+    // Suppress assertions caused by random initialization until reset has deasserted
+`ifdef VERILATOR
+    initial begin
+        $assertoff(0);
+        @(posedge bus_clk_rst_xbar_n);
+        $asserton(0);
+    end
+`endif
     
     `include "uncore/memory_bus/typedef.svh"
     `include "uncore/memory_bus/assign.svh"

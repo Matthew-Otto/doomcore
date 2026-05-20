@@ -36,7 +36,14 @@ async def test_soc(dut):
 
     cocotb.start_soon(log_sim_speed(dut, clk))
 
-    await ClockCycles(clk, 1500000)
+    await ClockCycles(clk, 1000)
+    await ClockCycles(busclk, 1)
+    dut.btn1_db.value = 1
+    await ClockCycles(clk, 1)
+    dut.btn1_db.value = 0
+
+
+    await ClockCycles(clk, 15000)
     await ClockCycles(clk, 10)
 
 
@@ -75,6 +82,10 @@ def test_runner():
             "--trace-structs",
             "--threads", "2",
             "--public-flat-rw",
+            "--timing",
+            "--x-assign", "unique",
+            "--x-initial", "unique",
+            "--x-initial-edge"
         ],
     )
 
@@ -82,7 +93,11 @@ def test_runner():
         hdl_toplevel=top_module,
         test_module=Path(__file__).stem,
         waves=True,
-        gui=True
+        gui=True,
+        test_args=[
+            "+verilator+rand+reset+2",
+            "+verilator+seed+1234",
+        ],
     )
 
 if __name__ == "__main__":

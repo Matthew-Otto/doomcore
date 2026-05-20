@@ -102,6 +102,7 @@ $(PNR_OUT): $(SYNTH_OUT) $(CST) $(SDC)
 		--log $(PNR_REPORT) \
 		--sdc $(SDC) \
 		-r
+#--seed 3287539368531479653
 	@printf "\nPnR Warnings:\n"
 	@grep -i "warning" $(PNR_REPORT) || true
 

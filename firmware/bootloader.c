@@ -67,5 +67,21 @@ void __attribute__((noreturn)) bootloader(void) {
         }
     }
 
+    // for (int y = 0; y < 200; y++) {
+    //     for (int x = 0; x < 80; x++) {
+    //         if (x < 20) {
+    //             *fb_addr = 0xfefefefe; // #6F006B
+    //         } else if (x < 40) {
+    //             *fb_addr = 0xa2a2a2a2; // #D7BB43
+    //         } else if (x < 60) {
+    //             *fb_addr = 0x74747474; // #5BBF4F
+    //         } else {
+    //             *fb_addr = 0xc0c0c0c0; // #E7E7FF
+    //         }
+
+    //         fb_addr += 1;
+    //     }
+    // }
+
     while (1) {}
 }

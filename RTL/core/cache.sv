@@ -1,4 +1,4 @@
-// 8KB dcache
+// 8KB cache
 // 256 bit cachelines
 // direct mapped
 // write through

@@ -39,6 +39,16 @@ module CLKDIV #(
 endmodule
 
 (* blackbox *)
+module CLKDIV2 #(
+    parameter GSREN = "false"
+) (
+    input  logic HCLKIN,
+    input  logic RESETN,
+    output logic CLKOUT
+);
+endmodule
+
+(* blackbox *)
 module OSER10 #(
     parameter GSREN = "false",
     parameter LSREN = "true"
@@ -57,5 +67,19 @@ module OSER10 #(
     input  logic PCLK,
     input  logic FCLK,
     input  logic RESET
+);
+endmodule
+
+(* blackbox *)
+module ODDR #(
+    parameter INIT = 1'b0,
+    parameter TXCLK_POL = 1'b0
+)(
+    input  wire D0,
+    input  wire D1,
+    input  wire TX,
+    input  wire CLK,
+    output wire Q0,
+    output wire Q1
 );
 endmodule
