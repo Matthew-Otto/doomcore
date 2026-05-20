@@ -7,7 +7,6 @@ import sys
 class SpikeRunner:
     def __init__(self, elf_file):
         self.elf_file = elf_file
-        self.first_run = True
 
         self.regfile = []
         self.entry_pc = "0x20000000"
@@ -26,9 +25,13 @@ class SpikeRunner:
         env['TERM'] = 'dumb' # strips out terminal characters
 
         self.process = pexpect.spawn(cmd[0], cmd[1:], env=env, encoding="utf-8")
+        self.process.setecho(False)
+            
+        self.instr_pattern = re.compile(r"(0x[0-9a-fA-F]+)\s+\((0x[0-9a-fA-F]+)\)\s+(.*)")
+        self.prompt_regex = r"(?:\r?\n|^): "
             
         match_index = self.process.expect([
-            r": ",
+            self.prompt_regex,
             r"terminate called",
         ])
         
@@ -42,35 +45,51 @@ class SpikeRunner:
             
             print((before_text + matched_text + remaining_text).strip())
             sys.exit(1)
-        self.process.setecho(False)
 
+        self.run_until(self.entry_pc)
+        
 
     def exec_cmd(self, cmd):
-        #print(f"Executing: '{cmd}'")
+        print(f"Executing: '{cmd}'")
         self.process.sendline(cmd)
-        self.process.expect(r"\n: ")
+        self.process.expect(self.prompt_regex)
         output = self.process.before
-        return output
+        if output.startswith(cmd):
+            output = output[len(cmd):]
+        return output.strip()
     
-    def dump_regfile(self):
-        reg_dump = self.exec_cmd("reg 0")
-        self.last_regfile = self.regfile
-        self.regfile = [int(v,16) for v in reg_dump.split() if ":" not in v]
+    def parse_instruction(self, line): # returns (pc, encoded instr, asm instr)
+        pattern = r"(0x[0-9a-fA-F]+)\s+\((0x[0-9a-fA-F]+)\)\s+(.*)"
+        match = self.instr_pattern.search(line)
+        if match:
+            return match.group(1), match.group(2), match.group(3).strip()
+        return None
+
 
     def run_until(self, untilpc):
         self.exec_cmd(f"until pc 0 {untilpc}")
 
-    def step(self): # returns (pc, instr)
-        if self.first_run:
-            self.first_run = 0
-            self.run_until(self.entry_pc)
-        
+    def step(self):    
         output = self.exec_cmd("r 1")
         print(output)
         self.dump_regfile()
-        data = [int(v, 16) for v in tuple(re.findall(r"0x[0-9a-fA-F]+", output))]
-        return data[0], data[1]
+        return self.parse_instruction(output)
+    
+    def stepn(self, n=1):
+        output = self.exec_cmd(f"r {n}")
+        lines = output.splitlines()
+        parsed_instructions = []
+        for line in lines:
+            if instr:= self.parse_instruction(line):
+                parsed_instructions.append(instr)
+                
+        return parsed_instructions
 
+
+    def dump_regfile(self):
+        reg_dump = self.exec_cmd("reg 0")
+        self.last_regfile = self.regfile
+        self.regfile = [int(v,16) for v in reg_dump.split() if ":" not in v]
 
     def regs(self):
         return self.regfile

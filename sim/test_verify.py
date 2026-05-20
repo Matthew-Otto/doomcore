@@ -14,6 +14,13 @@ from cocotb.clock import Clock
 from cocotb.triggers import Timer, ReadOnly, ReadWrite, ClockCycles, RisingEdge, FallingEdge
 
 
+async def valid_instr(dut, clk):
+    await ReadOnly()
+    if dut.cpu.branch_unit.valid.value != 1:
+        await RisingEdge(dut.cpu.branch_unit.valid)
+        while dut.cpu.stall_EX.value:
+            await ClockCycles(clk, 1)
+        await ReadOnly()
 
 @cocotb.test()
 async def test_verify(dut):
@@ -44,29 +51,41 @@ async def test_verify(dut):
     cocotb.start_soon(Clock(pclk, 39.682, unit="ns").start())
 
     cocotb.start_soon(log_sim_speed(dut, clk))
+    await FallingEdge(dut.core_clk_rst)
 
-    for _ in range(10000):
-        if dut.cpu.branch_unit.valid.value != 1:
-            await RisingEdge(dut.cpu.branch_unit.valid)
-            while dut.cpu.stall_EX.value:
+    tracing = True
+    iters = 2000000
+    step = 10000
+
+    for _ in range(0,iters,step):
+        if tracing:
+            trace = ref_sim.stepn(step)
+
+            if not trace:
+                tracing = False
+
+            for instr in trace:
+                await valid_instr(dut, clk)
+
+                ref_pc, ref_instr, ref_asm = instr
+                sim_pc = dut.cpu.branch_unit.PC.value
+
+                print(f"Ref: {ref_pc} | {ref_instr} | {ref_asm}")
+                print(f"Sim: {hex(sim_pc)}")
+                # for idx,reg in enumerate(ref_sim.regfile):
+                #     print(f"{idx:02} | {hex(reg)}")
+
+                if int(ref_pc,16) != sim_pc:
+                    # for idx,reg in enumerate(ref_sim.last_regfile):
+                    #     print(f"{idx:02} | {hex(reg)}")
+                    await ClockCycles(clk, 2)
+                    assert 0, f"Error: PC mismatch at time {get_sim_time(unit='ps')}ps"
+
                 await ClockCycles(clk, 1)
-            await ReadOnly()
-
-        ref_pc, ref_instr = ref_sim.step()
-        sim_pc = dut.cpu.branch_unit.PC.value
-        print(f"Ref: {hex(ref_pc)} | {hex(ref_instr)}")
-        print(f"Sim: {hex(sim_pc)}")
-        for idx,reg in enumerate(ref_sim.regfile):
-            print(f"{idx:02} | {hex(reg)}")
-
-        if ref_pc != sim_pc:
-            # for idx,reg in enumerate(ref_sim.last_regfile):
-            #     print(f"{idx:02} | {hex(reg)}")
-            await ClockCycles(clk, 2)
-            assert 0, f"Error: PC mismatch at time {get_sim_time(unit='ps')}ps"
-
-        await ClockCycles(clk, 1)
-        await ReadOnly()
+        else:
+            for _ in range(step):
+                await valid_instr(dut, clk)
+                await ClockCycles(clk, 1)
 
     #await ClockCycles(clk, 100000)
     await ClockCycles(clk, 10)
@@ -107,8 +126,12 @@ def test_runner():
             "-Wno-WIDTH",
             "--trace-fst",
             "--trace-structs",
-            "--threads", "4",
+            "--threads", "2",
             "--public-flat-rw",
+            "--timing",
+            "--x-assign", "unique",
+            "--x-initial", "unique",
+            "--x-initial-edge"
         ],
     )
 
@@ -116,7 +139,11 @@ def test_runner():
         hdl_toplevel=top_module,
         test_module=Path(__file__).stem,
         waves=True,
-        gui=True
+        gui=True,
+        test_args=[
+            "+verilator+rand+reset+2",
+            "+verilator+seed+1234",
+        ],
     )
 
 if __name__ == "__main__":

@@ -55,26 +55,10 @@ void __attribute__((noreturn)) bootloader(void) {
     // Draw a picture ot the frame buffer and then spin forever
     volatile uint32_t *fb_addr = (volatile uint32_t *)0x30000000;
 
-    for (int y = 0; y < 200; y++) {
-        for (int x = 0; x < 80; x++) {
-            if (x < 40) {
-                *fb_addr = 0xfefefefe; // #6F006B
-            } else {
-                *fb_addr = 0xc0c0c0c0; // #E7E7FF
-            }
-
-            fb_addr += 1;
-        }
-    }
-
     // for (int y = 0; y < 200; y++) {
     //     for (int x = 0; x < 80; x++) {
-    //         if (x < 20) {
+    //         if (x < 40) {
     //             *fb_addr = 0xfefefefe; // #6F006B
-    //         } else if (x < 40) {
-    //             *fb_addr = 0xa2a2a2a2; // #D7BB43
-    //         } else if (x < 60) {
-    //             *fb_addr = 0x74747474; // #5BBF4F
     //         } else {
     //             *fb_addr = 0xc0c0c0c0; // #E7E7FF
     //         }
@@ -82,6 +66,22 @@ void __attribute__((noreturn)) bootloader(void) {
     //         fb_addr += 1;
     //     }
     // }
+
+    for (int y = 0; y < 200; y++) {
+        for (int x = 0; x < 80; x++) {
+            if (x < 20) {
+                *fb_addr = 0xfefefefe; // #6F006B
+            } else if (x < 40) {
+                *fb_addr = 0xa2a2a2a2; // #D7BB43
+            } else if (x < 60) {
+                *fb_addr = 0x74747474; // #5BBF4F
+            } else {
+                *fb_addr = 0xc0c0c0c0; // #E7E7FF
+            }
+
+            fb_addr += 1;
+        }
+    }
 
     while (1) {}
 }
