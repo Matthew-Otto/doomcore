@@ -198,6 +198,7 @@ module core #(
 
     BRU branch_unit (
         .valid(EX_i.valid),
+        .stall(stall_EX),
         .PC(EX_i.PC),
         .is_ctrl_op(EX_i.is_ctrl_op),
         .br_type(EX_i.br_type),

@@ -15,12 +15,17 @@ from cocotb.triggers import Timer, ReadOnly, ReadWrite, ClockCycles, RisingEdge,
 
 
 async def valid_instr(dut, clk):
+    # find first instr that is valid and not stall
     await ReadOnly()
-    if dut.cpu.branch_unit.valid.value != 1:
-        await RisingEdge(dut.cpu.branch_unit.valid)
-        while dut.cpu.stall_EX.value:
-            await ClockCycles(clk, 1)
-        await ReadOnly()
+    while True:
+        if dut.cpu.branch_unit.valid.value != 1:
+            await RisingEdge(dut.cpu.branch_unit.valid)
+            await ReadOnly()
+        if dut.cpu.stall_EX.value == 1:
+            await FallingEdge(dut.cpu.stall_EX)
+            await ReadOnly()
+        if dut.cpu.branch_unit.valid.value and not dut.cpu.stall_EX.value:
+            break
 
 @cocotb.test()
 async def test_verify(dut):
@@ -57,6 +62,14 @@ async def test_verify(dut):
     iters = 500000
     step = 10000
 
+    # await ClockCycles(clk, 50000)
+    # await ClockCycles(busclk, 1)
+    # dut.btn1_db.value = 1
+    # await ClockCycles(clk, 1)
+    # dut.btn1_db.value = 0
+
+    instr_cnt = 0
+
     for _ in range(0,iters,step):
         if tracing:
             trace = ref_sim.stepn(step)
@@ -66,19 +79,22 @@ async def test_verify(dut):
 
             for instr in trace:
                 await valid_instr(dut, clk)
+                instr_cnt += 1
 
                 ref_pc, ref_instr, ref_asm = instr
                 sim_pc = dut.cpu.branch_unit.PC.value
 
                 print(f"Ref: {ref_pc} | {ref_instr} | {ref_asm}")
                 print(f"Sim: {hex(sim_pc)}")
-                # for idx,reg in enumerate(ref_sim.regfile):
-                #     print(f"{idx:02} | {hex(reg)}")
 
                 if int(ref_pc,16) != sim_pc:
-                    # for idx,reg in enumerate(ref_sim.last_regfile):
-                    #     print(f"{idx:02} | {hex(reg)}")
-                    await ClockCycles(clk, 2)
+                    instr, regs = ref_sim.get_state_at(instr_cnt)
+                    ref_pc, ref_instr, ref_asm = instr
+
+                    print(f"Ref: {ref_pc} | {ref_instr} | {ref_asm}")
+                    print(f"Ref regs:\n{regs}")
+
+                    await ClockCycles(clk, 5)
                     assert 0, f"Error: PC mismatch at time {get_sim_time(unit='ps')}ps"
 
                 await ClockCycles(clk, 1)
