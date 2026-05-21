@@ -28,10 +28,10 @@ module regfile (
     end
 
     assign rs1_data = (rs1_addr == 0) ? 32'b0 :
-                      (rs1_addr == ex_rd_addr) ? ex_rd_data :
-                      (rs1_addr == ld_rd_addr) ? ld_rd_data : regs[rs1_addr];
+                      (ex_we && (rs1_addr == ex_rd_addr)) ? ex_rd_data :
+                      (ld_we && (rs1_addr == ld_rd_addr)) ? ld_rd_data : regs[rs1_addr];
     assign rs2_data = (rs2_addr == 0) ? 32'b0 :
-                      (rs2_addr == ex_rd_addr) ? ex_rd_data :
-                      (rs2_addr == ld_rd_addr) ? ld_rd_data : regs[rs2_addr];
+                      (ex_we && (rs2_addr == ex_rd_addr)) ? ex_rd_data :
+                      (ld_we && (rs2_addr == ld_rd_addr)) ? ld_rd_data : regs[rs2_addr];
 
 endmodule : regfile
