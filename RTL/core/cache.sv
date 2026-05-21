@@ -106,12 +106,12 @@ module cache #(
     //// Core Interface ////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
     logic hit;
-    logic trigger_cache_fill;
     logic [3:0] core_wr_en;
-
+    
     // CDC
+    logic trigger_cache_fill, trigger_cache_fill_cdc;
     logic trigger_mem_write;
-    logic write_committed;
+    logic write_committed, write_committed_cdc;
 
     enum {
         CORE_IDLE,
@@ -167,7 +167,7 @@ module cache #(
                 if (hit) begin
                     core_wr_en = core_wr_en_buffer;
                     core_addr_mux = core_addr_buffer;
-                    if (write_committed) begin
+                    if (write_committed_cdc) begin
                         next_core_state = CORE_IDLE;
                     end else begin
                         next_core_state = CORE_WRITE_WAIT;
@@ -175,7 +175,7 @@ module cache #(
                 
                 // If not hit, can service a request this cycle.
                 end else begin
-                    if (write_committed) begin
+                    if (write_committed_cdc) begin
                         core_rdy = 1'b1;
                         if (core_read_val) begin
                             latch_address = 1'b1;
@@ -195,7 +195,7 @@ module cache #(
             end
 
             CORE_WRITE_WAIT : begin
-                if (write_committed) begin
+                if (write_committed_cdc) begin
                     core_rdy = 1'b1;
                     if (core_read_val) begin
                         latch_address = 1'b1;
@@ -376,6 +376,22 @@ module cache #(
         .rd_data_b()
     );
 
+    ////////////////////////////////////////////////////////////////////////
+    //// Control signal CDC ////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
+
+    pulse_shrinker cache_fill_cdc (
+        .clk_fast(bus_clk),
+        .pulse_in(trigger_cache_fill),
+        .pulse_out(trigger_cache_fill_cdc)
+    );
+
+    pulse_stretcher write_commit_cdc (
+        .clk_fast(bus_clk),
+        .pulse_in(write_committed),
+        .pulse_out(write_committed_cdc)
+    );
+
 
     ////////////////////////////////////////////////////////////////////////
     //// AXI Bus Interface /////////////////////////////////////////////////
@@ -431,7 +447,7 @@ module cache #(
 
         case (bus_state)
             BUS_IDLE : begin
-                if (trigger_cache_fill) begin
+                if (trigger_cache_fill_cdc) begin
                     m_axi.ar_valid = 1'b1;
                     if (m_axi.ar_ready)
                         next_bus_state = BUS_READ_WAIT;

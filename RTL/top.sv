@@ -53,14 +53,14 @@ module top #(
     //// System Clock Generator
     rPLL #(
         .FCLKIN("27.0"),
-        .IDIV_SEL(8),    // -> PFD = 3.0 MHz (range: 3-500 MHz)
-        .FBDIV_SEL(52), // -> CLKOUT = 159.0 MHz (range: 3.90625-625 MHz)
-        .ODIV_SEL(4), // -> VCO = 636.0 MHz (range: 500-1250 MHz)
+        .DYN_SDIV_SEL(2), // -> Divide CLKOUT by 2
+        // .IDIV_SEL(8),    // -> PFD = 3.0 MHz (range: 3-500 MHz)
+        // .FBDIV_SEL(52), // -> CLKOUT = 159.0 MHz (range: 3.90625-625 MHz)
+        // .ODIV_SEL(4) // -> VCO = 636.0 MHz (range: 500-1250 MHz)
         
-        // .IDIV_SEL(7), // -> PFD = 3.375 MHz (range: 3-500 MHz)
-        // .FBDIV_SEL(36), // -> CLKOUT = 124.875 MHz (range: 3.90625-625 MHz)
-        // .ODIV_SEL(8), // -> VCO = 999.0 MHz (range: 500-1250 MHz)
-        .DYN_SDIV_SEL(2) // -> Divide CLKOUT by 2
+        .IDIV_SEL(8), // -> PFD = 3.0 MHz (range: 3-500 MHz)
+        .FBDIV_SEL(39), // -> CLKOUT = 120.0 MHz (range: 3.90625-625 MHz)
+        .ODIV_SEL(8) // -> VCO = 960.0 MHz (range: 500-1250 MHz)
     ) busclk_pll (
         .CLKOUTP(),
         .CLKOUTD(core_clk),
@@ -154,10 +154,12 @@ module top #(
     );
 
 `ifndef VERILATOR
-    assign async_reset = reset_i | btn1_db;// | ~core_pll_lock | ~sclk_pll_lock;
+    assign async_reset = reset_i | btn1_db | ~core_pll_lock | ~sclk_pll_lock;
 `else
     assign async_reset = reset_i | btn1_db; 
 `endif
+
+    assign led[0] = ~async_reset;
 
     reset_sync core_reset_gen (
         .clk(core_clk),

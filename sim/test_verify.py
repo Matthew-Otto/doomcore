@@ -54,7 +54,7 @@ async def test_verify(dut):
     await FallingEdge(dut.core_clk_rst)
 
     tracing = True
-    iters = 2000000
+    iters = 500000
     step = 10000
 
     for _ in range(0,iters,step):

@@ -101,8 +101,8 @@ $(PNR_OUT): $(SYNTH_OUT) $(CST) $(SDC)
 		--vopt cst=$(CST) \
 		--log $(PNR_REPORT) \
 		--sdc $(SDC) \
-		-r
-#--seed 3287539368531479653
+		--seed 8414909061171736391
+#-r
 	@printf "\nPnR Warnings:\n"
 	@grep -i "warning" $(PNR_REPORT) || true
 
@@ -138,6 +138,9 @@ $(BOOTLOADER_HEX): $(FW_SRC)
 
 soc_sim: $(BOOTLOADER_HEX)
 	cd $(SIM_DIR) && python3 test_soc.py
+
+soc_verify: $(BOOTLOADER_HEX)
+	cd $(SIM_DIR) && python3 test_verify.py
 
 soc_waves:
 	@test -f $(SIM_DIR)sim_build/dump.fst || (echo "Error: dump.fst not found in $(SIM_DIR)sim_build/. Simulate a target first." && exit 1)
