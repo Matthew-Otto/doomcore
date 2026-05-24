@@ -36,6 +36,8 @@ module LSU #(
     output logic [4:0]  ld_rd_addr,
     output logic [31:0] ld_rd_data,
 
+    output logic utx, // BOZO DEBUG
+
     AXI_BUS.Master      dcache_port
 );    
 
@@ -144,5 +146,23 @@ module LSU #(
         .core_read_data_val(ld_valid),
         .m_axi(dcache_port)
     );
+
+
+
+    logic writeuart;
+    assign writeuart = wr_en[0] && (ls_addr == 32'h40000000);
+
+    uart_tx #(
+        .CLK_RATE(120_000_000),
+        .BAUD_RATE(1000000)
+    ) uart (
+        .clk(clk),
+        .reset(rst),
+        .tx(utx),
+        .data(write_data[7:0]),
+        .ready(),
+        .valid(writeuart)
+    );
+
 
 endmodule : LSU

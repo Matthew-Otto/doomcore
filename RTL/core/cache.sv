@@ -118,15 +118,14 @@ module cache #(
     logic [10:0] ds_wr_addr, ds_rd_addr;
     logic [31:0] ds_wr_data, ds_rd_data;
     
-    sdp_bram_be #(
+    dp_bram_be #(
         .ADDR_WIDTH(11),
         .DATA_WIDTH(32)
     ) data_store (
-        .wr_clk(clk),
+        .clk(clk),
         .wr_en(ds_wr_en),
         .wr_addr(ds_wr_addr),
         .wr_data(ds_wr_data),
-        .rd_clk(clk),
         .rd_addr(ds_rd_addr),
         .rd_data(ds_rd_data)
     );
@@ -359,7 +358,7 @@ module cache #(
                         ts_wr_addr = buffer_index;
                         ts_wr_data = {1'b1,buffer_tag};                
 
-                        // TODO can reduce the latency here by one cycle
+                        // TODO can reduce the latency here by one cycle (if tag store uses bypass)
                         ds_rd_addr = {buffer_index, buffer_word_os};
                         next_state = CACHE_FILLED;
                     end

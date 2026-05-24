@@ -9,13 +9,14 @@ BUILD_DIR = build
 
 # Architecture and Compiler Flags
 ARCH    = -march=rv32im -mabi=ilp32
-CFLAGS  = $(ARCH) -O2 -Wall -Wextra -ffreestanding -nostdlib -mstrict-align
+CFLAGS  = $(ARCH) -O3 -Wall -Wextra -ffreestanding -nostdlib -mstrict-align
 LDSCRIPT = linker.ld
 LDFLAGS = -T $(LDSCRIPT) -nostartfiles -Wl,--gc-sections -Wl,-Map=$(BUILD_DIR)/bootloader.map
 
 SRC = bootloader.c
+ASM = $(BUILD_DIR)/bootloader.s
 OBJ = bootloader.o
-ASM = $(BUILD_DIR)/bootloader.asm
+DISASM = $(BUILD_DIR)/bootloader.asm
 ELF = $(BIN_DIR)/bootloader.elf
 HEX = $(BIN_DIR)/bootloader.hex
 
@@ -24,24 +25,26 @@ ROM_BASE = $(shell awk '/ROM.*ORIGIN/ { match($$0, /0x[0-9a-fA-F]+/); print subs
 
 
 # Default target
-all: $(ASM) $(HEX)
+all: $(ASM) $(HEX) $(DISASM)
 
-# Create build directory if not present
-$(BIN_DIR):
-	mkdir -p $(BIN_DIR)
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+# Create directories
+$(BIN_DIR) $(BUILD_DIR):
+	mkdir -p $@
+
+# Compile program to ASM
+$(ASM): $(SRC) | $(BIN_DIR) $(BUILD_DIR)
+	$(CC) $(CFLAGS) -S $< -o $@
 
 # Compile and link into ELF
-$(ELF): $(SRC) $(LDSCRIPT) | $(BIN_DIR) $(BUILD_DIR)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(SRC) -o $@
+$(ELF): $(ASM) $(LDSCRIPT)
+	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
 
 # Convert ELF to Verilog hex
 $(HEX): $(ELF)
 	$(OBJCOPY) -O verilog --verilog-data-width=4 --adjust-vma=-$(ROM_BASE) $< $@
 
 # Generate Disassembly
-$(ASM): $(ELF)
+$(DISASM): $(ELF)
 	$(OBJDUMP) -d $< > $@
 
 # Clean up build artifacts

@@ -17,7 +17,9 @@ module control (
     output logic stall_FE,
 
     // Source Bypass/Hazard
+    input  logic       is_writeback_DE,
     input  logic       is_imm_DE,
+    input  logic [4:0] rd_addr_DE,
     input  logic [4:0] rs1_addr_DE,
     input  logic [4:0] rs2_addr_DE,
 
@@ -32,13 +34,16 @@ module control (
     input  logic       ld_valid_LS
 );
 
+    logic rd_match_EX;
     logic rs1_match_EX;
     logic rs2_match_EX;
     logic source_hazard_EX;
 
+    logic rd_match_LS_dispatch;
     logic rs1_match_LS_dispatch;
     logic rs2_match_LS_dispatch;
     logic source_hazard_LS_dispatch;
+    logic rd_match_LS_inflight;
     logic rs1_match_LS_inflight;
     logic rs2_match_LS_inflight;
     logic source_hazard_LS_inflight;
@@ -48,18 +53,21 @@ module control (
 
     // Stall if DE depends on destination of Load in EX
     // Other dependencies in EX will be forwarded automatically in regfile
+    assign rd_match_EX = (rd_addr_DE == rd_addr_EX) && is_writeback_DE;
     assign rs1_match_EX = (rs1_addr_DE == rd_addr_EX);
     assign rs2_match_EX = (rs2_addr_DE == rd_addr_EX) && ~is_imm_DE;
-    assign source_hazard_EX = valid_EX && is_load_op_EX && (rs1_match_EX || rs2_match_EX);
+    assign source_hazard_EX = valid_EX && is_load_op_EX && (rd_match_EX || rs1_match_EX || rs2_match_EX);
 
     // Stall if DE depends on destination of Load in LS and the result is not ready
+    assign rd_match_LS_dispatch = (rd_addr_DE == rd_addr_LS) && is_writeback_DE;
     assign rs1_match_LS_dispatch = (rs1_addr_DE == rd_addr_LS);
     assign rs2_match_LS_dispatch = (rs2_addr_DE == rd_addr_LS) && ~is_imm_DE;
-    assign source_hazard_LS_dispatch = valid_LS && is_load_op_LS && (rs1_match_LS_dispatch || rs2_match_LS_dispatch);
+    assign source_hazard_LS_dispatch = valid_LS && is_load_op_LS && (rd_match_LS_dispatch || rs1_match_LS_dispatch || rs2_match_LS_dispatch);
 
+    assign rd_match_LS_inflight = (rd_addr_DE == ld_rd_addr_LS) && is_writeback_DE;
     assign rs1_match_LS_inflight = (rs1_addr_DE == ld_rd_addr_LS);
     assign rs2_match_LS_inflight = (rs2_addr_DE == ld_rd_addr_LS) && ~is_imm_DE;
-    assign source_hazard_LS_inflight = ld_inflight_LS && (rs1_match_LS_inflight || rs2_match_LS_inflight) && ~ld_valid_LS;
+    assign source_hazard_LS_inflight = ld_inflight_LS && (rd_match_LS_inflight || rs1_match_LS_inflight || rs2_match_LS_inflight) && ~ld_valid_LS;
 
     assign source_hazard_LS = source_hazard_LS_dispatch || source_hazard_LS_inflight;
    

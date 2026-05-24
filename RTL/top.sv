@@ -222,7 +222,7 @@ module top #(
 
     localparam axi_pkg::xbar_cfg_t XbarCfg = '{
         NoSlvPorts:         2, // 2 Masters
-        NoMstPorts:         4, // 4 Slaves
+        NoMstPorts:         3, // 4 Slaves
         MaxMstTrans:        0, // Max outstanding transactions
         MaxSlvTrans:        1,
         FallThrough:        1'b0,
@@ -233,7 +233,7 @@ module top #(
         UniqueIds:          1'b1,
         AxiAddrWidth:       AXI_ADDR_WIDTH,
         AxiDataWidth:       AXI_DATA_WIDTH,
-        NoAddrRules:        4  // One rule per slave
+        NoAddrRules:        3  // One rule per slave
     };
 
     localparam int AXI_MST_ID_WIDTH = AXI_ID_WIDTH + $clog2(XbarCfg.NoSlvPorts);
@@ -245,8 +245,8 @@ module top #(
     localparam rule_t [XbarCfg.NoAddrRules-1:0] ADDR_MAP = '{
         '{idx: 0, start_addr: 32'h2000_0000, end_addr: 32'h2000_FFFF}, // Slave 0 (Boot ROM)
         '{idx: 1, start_addr: 32'h8000_0000, end_addr: 32'h807F_FFFF}, // Slave 1 (SDRAM Controller)
-        '{idx: 2, start_addr: 32'h3000_0000, end_addr: 32'h3000_FFFF}, // Slave 2 (Frame Buffer)
-        '{idx: 3, start_addr: 32'h4000_0000, end_addr: 32'h4000_FFFF}  // Slave 3 (SD Card Interface)
+        '{idx: 2, start_addr: 32'h3000_0000, end_addr: 32'h3000_FFFF} // Slave 2 (Frame Buffer)
+        //'{idx: 3, start_addr: 32'h4000_0000, end_addr: 32'h4000_FFFF}  // Slave 3 (SD Card Interface)
     };
 
 
@@ -298,6 +298,7 @@ module top #(
     ) cpu (
         .clk(sys_clk),
         .rst(sys_clk_rst),
+        .utx(uart_tx), // BOZO
         .icache_port(axi_slv_ports[0]),
         .dcache_port(axi_slv_ports[1])
     );
@@ -371,21 +372,6 @@ module top #(
     ////////////////////////////////////////////////////////////////////////
 
     // axi_mst_ports[3]
-
-
-    // UART for debug (temp)
-    axi4_uart_tx #(
-        .ID_WIDTH(AXI_MST_ID_WIDTH),
-        .CLK_FREQ(SYS_CLK_FREQ),
-        .BAUD_RATE(115200)
-    ) uart (
-        .clk(sys_clk),
-        .rst(sys_clk_rst_display),
-        .axi_s(axi_mst_ports[3]),
-        .uart_tx
-    );
-
-
 
 
 

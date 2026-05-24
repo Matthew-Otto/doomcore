@@ -56,28 +56,31 @@ void __attribute__((noreturn)) bootloader(void) {
     volatile uint32_t *uart = (volatile uint32_t *)0x40000000;
     volatile uint32_t *fb_addr;
 
-    uint8_t cnt = 0;
+    *uart = 0x55;
 
-    while (1) {
-        fb_addr = (volatile uint32_t *)0x30000000;
-        for (int y = 0; y < 200; y++) {
-            for (int x = 0; x < 80; x++) {
-                if (x < 20) {
-                    *fb_addr = 0xfefefefe; // #6F006B
-                } else if (x < 40) {
-                    *fb_addr = 0xa2a2a2a2; // #D7BB43
-                } else if (x < 60) {
-                    *fb_addr = 0xc0c0c0c0; // #E7E7FF
-                } else {
-                    *fb_addr = 0x74747474; // #5BBF4F
-                }
-    
-                fb_addr += 1;
-            }
-        }
-        *uart = cnt;
-        cnt++;
+    for (uint8_t i = 0; i < 256; i++) {
+        *uart = i;
+        for (volatile int x = 0; x < 1000; x++) {};
     }
+
+    // while (1) {
+    //     fb_addr = (volatile uint32_t *)0x30000000;
+    //     for (int y = 0; y < 200; y++) {
+    //         for (int x = 0; x < 80; x++) {
+    //             if (x < 20) {
+    //                 *fb_addr = 0xfefefefe; // #6F006B
+    //             } else if (x < 40) {
+    //                 *fb_addr = 0xa2a2a2a2; // #D7BB43
+    //             } else if (x < 60) {
+    //                 *fb_addr = 0xc0c0c0c0; // #E7E7FF
+    //             } else {
+    //                 *fb_addr = 0x74747474; // #5BBF4F
+    //             }
+    
+    //             fb_addr += 1;
+    //         }
+    //     }
+    // }
 
     while (1) {}
 }

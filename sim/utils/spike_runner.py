@@ -131,6 +131,6 @@ class SpikeRunner:
         self.reset()
         self.stepn(cycle_cnt-1)
         instr = self.step()
-        regs = self.regs()
+        regs = self.format_regs(self.regfile)
         return instr, regs
 

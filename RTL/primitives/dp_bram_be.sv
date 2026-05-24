@@ -1,0 +1,31 @@
+// Simple dual-port, dual-clock BRAM with write byte masking
+
+module dp_bram_be #(
+    parameter ADDR_WIDTH = 8,
+    parameter DATA_WIDTH = 32
+)(
+    // Write Port
+    input  logic                      clk,
+    input  logic [(DATA_WIDTH/8)-1:0] wr_en,
+    input  logic [ADDR_WIDTH-1:0]     wr_addr,
+    input  logic [DATA_WIDTH-1:0]     wr_data,
+
+    // Read Port
+    input  logic [ADDR_WIDTH-1:0]     rd_addr,
+    output logic [DATA_WIDTH-1:0]     rd_data
+);
+
+    (* ram_style = "block", gowin_attribute = "RAM_Clock_Asynchronous=True" *) logic [DATA_WIDTH-1:0] ram [0:(1<<ADDR_WIDTH)-1];
+
+    always_ff @(posedge clk) begin
+        for (int i = 0; i < (DATA_WIDTH/8); i=i+1) begin
+            if (wr_en[i]) begin
+                ram[wr_addr][i*8+:8] <= wr_data[i*8+:8];
+            end
+
+            rd_data[i*8+:8] <= wr_en[i] && (rd_addr ==  wr_addr) ? wr_data[i*8+:8] : ram[rd_addr][i*8+:8];
+        end
+        
+    end
+
+endmodule : dp_bram_be
