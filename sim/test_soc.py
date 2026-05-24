@@ -21,29 +21,23 @@ async def test_soc(dut):
 
     dut._log.info(f"Executing Bootloader")
 
-    clk = dut.core_clk
-    busclk = dut.bus_clk
+    clk = dut.sys_clk
     pclk = dut.p_clk
-    reset = dut.async_reset
+    reset = dut.sys_clk_rst
 
     # init system
-    sdram = SDRAM(dut.sdram_i.sdram_controller_i, busclk)
-    sys_clk_ps = round((1/80_000_000) * 1e12)
-    bus_clk_ps = round((1/160_000_000) * 1e12)
+    sdram = SDRAM(dut.sdram_i.sdram_controller_i, clk)
+    sys_clk_ps = round((1/100_000_000) * 1e12)
     cocotb.start_soon(Clock(clk, sys_clk_ps, unit="ps").start())
-    cocotb.start_soon(Clock(busclk, bus_clk_ps, unit="ps").start())
     cocotb.start_soon(Clock(pclk, 39.682, unit="ns").start())
 
     cocotb.start_soon(log_sim_speed(dut, clk))
-
-    await ClockCycles(clk, 1000)
-    await ClockCycles(busclk, 1)
-    dut.btn1_db.value = 1
-    await ClockCycles(clk, 1)
     dut.btn1_db.value = 0
+    dut.sys_pll_lock.value = 1
+    dut.sclk_pll_lock.value = 1
+    await FallingEdge(reset)
 
-
-    await ClockCycles(clk, 15000)
+    await ClockCycles(clk, 500000)
     await ClockCycles(clk, 10)
 
 

@@ -15,10 +15,8 @@ module LSU #(
     parameter int DATA_WIDTH, 
     parameter int ID_WIDTH
 ) (
-    input  logic        core_clk,
-    input  logic        core_clk_rst,
-    input  logic        bus_clk,
-    input  logic        bus_clk_rst,
+    input  logic        clk,
+    input  logic        rst,
 
     // Core Control
     input  logic        valid,
@@ -51,8 +49,8 @@ module LSU #(
     logic [31:0] core_read_data;
     logic [31:0] read_data_aligned;
 
-    always_ff @(posedge core_clk) begin
-        if (core_clk_rst || ld_valid)
+    always_ff @(posedge clk) begin
+        if (rst || ld_valid)
             pending_load <= 0;
         else if (load)
             pending_load <= 1;
@@ -134,10 +132,8 @@ module LSU #(
         .DATA_WIDTH(DATA_WIDTH),
         .ID_WIDTH(ID_WIDTH)
     ) dcache_i (
-        .core_clk,
-        .core_clk_rst,
-        .bus_clk,
-        .bus_clk_rst,
+        .clk,
+        .rst,
         .core_flush(1'b0),
         .core_rdy(cache_rdy),
         .core_addr(ls_addr),

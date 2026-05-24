@@ -5,10 +5,8 @@ module core #(
     parameter int DATA_WIDTH,
     parameter int ID_WIDTH
 ) (
-    input  logic        core_clk,
-    input  logic        core_clk_rst,
-    input  logic        bus_clk,
-    input  logic        bus_clk_rst,
+    input  logic        clk,
+    input  logic        rst,
 
     AXI_BUS.Master      icache_port,
     AXI_BUS.Master      dcache_port
@@ -30,10 +28,8 @@ module core #(
         .DATA_WIDTH(DATA_WIDTH),
         .ID_WIDTH(ID_WIDTH)
     ) fetch_unit (
-        .core_clk,
-        .core_clk_rst,
-        .bus_clk,
-        .bus_clk_rst,
+        .clk,
+        .rst,
         .stall_FE,
         .branch(branch_EX),
         .branch_target(branch_target_EX),
@@ -57,8 +53,8 @@ module core #(
     skid_buffer #(
         .DATA_WIDTH(64)
     ) skid_buffer_i (
-        .clk(core_clk),
-        .reset(core_clk_rst || flush_DE),
+        .clk(clk),
+        .reset(rst || flush_DE),
         .input_ready(),
         .input_valid(valid_FE),
         .input_data({PC_FE,instr_FE}),
@@ -107,7 +103,7 @@ module core #(
         logic [31:0] imm_j;
     } DE_o, EX_i;
   
-    assign DE_o.valid = valid_DE_i;
+    assign DE_o.valid = valid_DE_i && ~stall_DE;
     assign DE_o.PC = PC_DE;
     assign DE_o.instr = instr_DE;
 
@@ -150,7 +146,7 @@ module core #(
     pipeline_reg #(
         .WIDTH($bits(DE_o))
     ) pipeline_de_ex (
-        .clk(core_clk),
+        .clk(clk),
         .rst(flush_EX),
         .en(~stall_EX),
         .in(DE_o),
@@ -214,7 +210,7 @@ module core #(
     );
 
     // Pass through
-    assign EX_o.valid = EX_i.valid;
+    assign EX_o.valid = EX_i.valid && ~stall_EX;
     assign EX_o.PC = EX_i.PC;
     assign EX_o.instr = EX_i.instr;
 
@@ -235,7 +231,7 @@ module core #(
     pipeline_reg #(
         .WIDTH($bits(EX_o))
     ) pipeline_ex_ls (
-        .clk(core_clk),
+        .clk(clk),
         .rst(flush_LS),
         .en(~stall_LS),
         .in(EX_o),
@@ -258,10 +254,8 @@ module core #(
         .DATA_WIDTH(DATA_WIDTH),
         .ID_WIDTH(ID_WIDTH)
     ) loadstore_unit (
-        .core_clk,
-        .core_clk_rst,
-        .bus_clk,
-        .bus_clk_rst,
+        .clk,
+        .rst,
         .valid(LS_i.valid),
         .ready(ready_LS),
         .is_load_op(LS_i.is_load_op),
@@ -290,7 +284,7 @@ module core #(
     assign ld_we = ld_valid;
 
     regfile regfile_i (
-        .clk(core_clk),
+        .clk,
         .ex_we,
         .ex_rd_addr(EX_i.rd_addr),
         .ex_rd_data(EX_o.alu_out),
@@ -309,6 +303,7 @@ module core #(
     ////////////////////////////////////////////////////////////////////////
 
     control control_i (
+        .rst,
         .branch_EX,
         .ready_LS,
 

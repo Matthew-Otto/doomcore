@@ -17,21 +17,23 @@ module frame_buffer #(
     //// Read Byte Mux /////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
     logic [13:0] bram_read_addr;
-    logic [1:0]  read_byte_offset;
-    logic [31:0] bram_read_word;
+    logic [1:0]  read_byte_offset, read_byte_offset_d;
+    logic [31:0] bram_read_word, bram_read_word_reg;
 
     assign bram_read_addr = read_addr[15:2];
 
-    always_ff @(posedge p_clk)
+    always_ff @(posedge p_clk) begin
         read_byte_offset <= read_addr[1:0];
+        read_byte_offset_d <= read_byte_offset;
+        bram_read_word_reg <= bram_read_word;
+    end
 
-    assign read_data = bram_read_word[read_byte_offset*8+:8];
+    assign read_data = bram_read_word[read_byte_offset_d*8+:8];
 
 
     ////////////////////////////////////////////////////////////////////////
     //// AXI Write Logic ///////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
-
     enum {
         IDLE,
         WRITE
@@ -71,7 +73,7 @@ module frame_buffer #(
         case (state)
             IDLE : begin
                 s_axi.aw_ready = 1'b1;
-                s_axi.w_ready = 1'b1;
+                s_axi.w_ready = s_axi.aw_valid;
                 bram_write_addr = aligned_addr;
                 
                 if (s_axi.aw_valid) begin
@@ -106,7 +108,15 @@ module frame_buffer #(
 
     // Write response logic
     always_ff @(posedge bus_clk) begin
-        b_valid_reg <= s_axi.w_last;
+        if (bus_clk_rst) begin
+            b_valid_reg <= 1'b0;
+        end else begin
+            if (s_axi.w_valid && s_axi.w_ready && s_axi.w_last)
+                b_valid_reg <= 1'b1;
+            else if (s_axi.b_ready)
+                b_valid_reg <= 1'b0;
+        end
+
         if (s_axi.aw_ready && s_axi.aw_valid)
             b_id_reg <= s_axi.aw_id;
     end
@@ -114,6 +124,16 @@ module frame_buffer #(
     assign s_axi.b_id = b_id_reg;
     assign s_axi.b_valid = b_valid_reg;
     assign s_axi.b_resp = 2'b0;
+
+
+    //// Tie read channel off
+    assign s_axi.ar_ready = '0;
+    assign s_axi.r_id = '0;
+    assign s_axi.r_data = '0;
+    assign s_axi.r_resp = '0;
+    assign s_axi.r_last = '0;
+    assign s_axi.r_user = '0;
+    assign s_axi.r_valid = '0;
 
 
     ////////////////////////////////////////////////////////////////////////

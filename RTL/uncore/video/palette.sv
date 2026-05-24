@@ -14,5 +14,4 @@ module palette (
 
     assign read_data = rom[read_addr];
 
-
 endmodule : palette

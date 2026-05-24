@@ -1,7 +1,7 @@
 module sdram_controller #(
-    parameter int MEM_CLK_FREQ = 0
+    parameter int CLK_FREQ = 0
 )(
-    input  logic        mem_clk,
+    input  logic        clk,
     input  logic        reset,
 
     output logic        cmd_ready,
@@ -30,7 +30,7 @@ module sdram_controller #(
     // SDRAM parameters / settings
     //--------------------------------------------------------------------------
     // SDRAM timings (ns) from spec EM638325-6 (speed grade 6, 166MHz Fmax)
-    localparam real tCK_ns = 1_000_000_000 / MEM_CLK_FREQ;
+    localparam real tCK_ns = 1_000_000_000 / CLK_FREQ;
     localparam tRC_ns = 60;
     localparam tRCD_ns = 18;
     localparam tRP_ns = 18;
@@ -40,7 +40,7 @@ module sdram_controller #(
     localparam tRFC_ns = 60;
     localparam tPOD_ns = 200_000;
 
-    localparam int tCAS = 3; // 2/3 allowed, 3 required for mem_clk > 100 MHz
+    localparam int tCAS = 3; // 2/3 allowed, 3 required for clk > 100 MHz
     localparam int tWR = 2;
     localparam int tCCD = 1;
     localparam int tMRD = 2;
@@ -56,7 +56,7 @@ module sdram_controller #(
     // SDRAM mode settings
     localparam BURST_LENGTH = 3'b011; // 000 = none, 001 = 2, 010 = 4, 011 = 8, 111 = full page
     localparam BURST_TYPE   = 1'b0;   // 0 = sequential, 1 = interleaved
-    localparam CAS_LATENCY  = tCAS;   // 2/3 allowed, 3 required for mem_clk > 100 MHz
+    localparam CAS_LATENCY  = tCAS;   // 2/3 allowed, 3 required for clk > 100 MHz
     localparam OP_MODE      = 2'b00;  // 0 = standard (vendor specific)
     localparam BURST_WRITE  = 1'b0;   // 0 = enabled, 1 = read burst, single write
     localparam MODE = {3'b0, BURST_WRITE, OP_MODE, CAS_LATENCY, BURST_TYPE, BURST_LENGTH};
@@ -99,7 +99,7 @@ module sdram_controller #(
     logic [1:0]  sdram_bank;
     logic [10:0] init_addr, sdram_addr;
 
-    assign O_sdram_clk = mem_clk;
+    assign O_sdram_clk = clk;
     assign O_sdram_cke = 1'b1;
     assign O_sdram_cs_n = 1'b0;
 
@@ -129,7 +129,7 @@ module sdram_controller #(
         INIT_DONE
     } init_state;
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) begin
             init_state <= INIT_POWER;
             init_delay_cnt <= tPOD;
@@ -187,7 +187,7 @@ module sdram_controller #(
     logic [15:0] refresh_cnt;
     logic        refresh_req;
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (state == INIT) begin
             refresh_cnt <= 0;
             refresh_req <= 0;
@@ -216,7 +216,7 @@ module sdram_controller #(
     assign latch_input = cmd_ready && (read || write);
     assign {bank_addr,row_addr,col_addr} = addr;
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) begin
             {latched_bank_addr,latched_row_addr,latched_col_addr} <= '0;
         end else if (latch_input) begin
@@ -232,7 +232,7 @@ module sdram_controller #(
     logic [10:0] open_row_addr [3:0];
 
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) begin
             open_rows <= '0;
         end else begin
@@ -272,7 +272,7 @@ module sdram_controller #(
     logic [tCAS-1:0] read_valid_delay;
 
     assign read_queued = ((state == READ) || (state == READ_BURST)) && ~&O_sdram_dqm;
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) read_valid_delay <= 0;
         else begin
             read_valid_delay[tCAS-1] <= read_queued;
@@ -287,21 +287,21 @@ module sdram_controller #(
     // Track Required Delays
     //--------------------------------------------------------------------------
     logic [$clog2(tRRD)-1:0] tRRD_cnt; // ACT to ACT in different banks
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) tRRD_cnt <= 0;
         else if (sdram_cmd == CMD_ACTIVE) tRRD_cnt <= tRRD - 1;
         else if (|tRRD_cnt) tRRD_cnt <= tRRD_cnt - 1;
     end
     
     logic [$clog2(tRAS)-1:0] tRAS_cnt; // ACT to PRECHARGE
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) tRAS_cnt <= 0;
         else if (sdram_cmd == CMD_ACTIVE) tRAS_cnt <= tRAS - 1;
         else if (|tRAS_cnt) tRAS_cnt <= tRAS_cnt - 1;
     end
 
     logic [$clog2(tWR)-1:0] tWR_cnt; // ACT to PRECHARGE
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) tWR_cnt <= 0;
         else if (sdram_cmd == CMD_WRITE) tWR_cnt <= tWR - 1;
         else if (|tWR_cnt) tWR_cnt <= tWR_cnt - 1;
@@ -315,12 +315,12 @@ module sdram_controller #(
     logic [2:0] burst_cnt, next_burst_cnt;
     logic [15:0] delay_cnt, next_delay_cnt;
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset)               state <= INIT;
         else if (delay_cnt == 0) state <= next_state;
     end
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset)
             delay_cnt <= 0;
         else if (|delay_cnt)
@@ -329,7 +329,7 @@ module sdram_controller #(
             delay_cnt <= next_delay_cnt;
     end
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset)
             burst_cnt <= 0;
         else if (|burst_cnt)

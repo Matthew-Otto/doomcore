@@ -13,7 +13,7 @@ class SpikeRunner:
             "spike",
             "-d",
             "--isa=RV32IM",
-            "-m0x20000000:0x400,0x30000000:0x10000,0x80000000:0x800000",
+            "-m0x20000000:0x400,0x30000000:0x10000,0x40000000:0x10000,0x80000000:0x800000",
             f"--pc={self.entry_pc}",
             elf_file
         ]
@@ -95,10 +95,9 @@ class SpikeRunner:
 
     def dump_regfile(self):
         reg_dump = self.exec_cmd("reg 0")
-        self.last_regfile = self.regfile
         self.regfile = [int(v,16) for v in reg_dump.split() if ":" not in v]
 
-    def regs(self):
+    def format_regs(self, regs):
         reg_string = ""
         abi_names = [
             "00", "ra",  "sp",  "gp",  "tp", "t0", "t1", "t2",
@@ -116,7 +115,7 @@ class SpikeRunner:
                 # Calculate index for column-major order
                 reg_num = row + (col * num_rows)
                 alias = abi_names[reg_num]
-                val = self.regfile[reg_num]
+                val = regs[reg_num]
                 val_str = f"0x{val & 0xFFFFFFFF:08x}" 
                 entry = f"x{reg_num:<2} ({alias+")":<4}: {val_str}"
                 row_entries.append(entry)

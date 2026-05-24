@@ -1,22 +1,19 @@
 // Reset synchronizer
 
 module reset_sync #(
-    parameter STAGES = 2
+    parameter STRETCH = 2
 ) (
-    input  logic clk,
     input  logic async_reset,
+    input  logic sync_clk,
     output logic sync_reset
 );
 
-    logic [STAGES-1:0] sync;
+    (* async_reg = "true" *) logic [1:0] sync_reg;
 
-    always @(posedge clk or posedge async_reset) begin
-        if (async_reset)
-            sync <= '1;
-        else
-            sync <= {sync[STAGES-2:0], 1'b0};
+    always_ff @(posedge sync_clk) begin
+        sync_reg <= {sync_reg[0], async_reset};
     end
 
-    assign sync_reset = sync[STAGES-1];
+    assign sync_reset = sync_reg[1];
 
 endmodule : reset_sync

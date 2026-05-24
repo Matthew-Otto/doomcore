@@ -27,6 +27,12 @@ async def valid_instr(dut, clk):
         if dut.cpu.branch_unit.valid.value and not dut.cpu.stall_EX.value:
             break
 
+
+def sim_regs(dut):
+    regs = [int(r.value) for r in dut.cpu.regfile_i.regs]
+    return regs[::-1]
+
+
 @cocotb.test()
 async def test_verify(dut):
     setup_file_logger(dut._log, "INFO")
@@ -42,24 +48,24 @@ async def test_verify(dut):
 
     dut._log.info(f"Executing Bootloader")
 
-    clk = dut.core_clk
-    busclk = dut.bus_clk
+    clk = dut.sys_clk
     pclk = dut.p_clk
-    reset = dut.async_reset
+    reset = dut.sys_clk_rst
 
     # init system
-    sdram = SDRAM(dut.sdram_i.sdram_controller_i, busclk)
-    sys_clk_ps = round((1/80_000_000) * 1e12)
-    bus_clk_ps = round((1/160_000_000) * 1e12)
+    sdram = SDRAM(dut.sdram_i.sdram_controller_i, clk)
+    sys_clk_ps = round((1/100_000_000) * 1e12)
     cocotb.start_soon(Clock(clk, sys_clk_ps, unit="ps").start())
-    cocotb.start_soon(Clock(busclk, bus_clk_ps, unit="ps").start())
     cocotb.start_soon(Clock(pclk, 39.682, unit="ns").start())
 
     cocotb.start_soon(log_sim_speed(dut, clk))
-    await FallingEdge(dut.core_clk_rst)
+    dut.btn1_db.value = 0
+    dut.sys_pll_lock.value = 1
+    dut.sclk_pll_lock.value = 1
+    await FallingEdge(reset)
 
     tracing = True
-    iters = 500000
+    iters = 1000000
     step = 10000
 
     # await ClockCycles(clk, 50000)
@@ -88,7 +94,7 @@ async def test_verify(dut):
                 print(f"Sim: {hex(sim_pc)}")
 
                 if int(ref_pc,16) != sim_pc:
-                    instr, regs = ref_sim.get_state_at(instr_cnt)
+                    instr, regs = ref_sim.get_state_at(instr_cnt-1)
                     ref_pc, ref_instr, ref_asm = instr
 
                     print(f"Ref: {ref_pc} | {ref_instr} | {ref_asm}")
@@ -98,6 +104,25 @@ async def test_verify(dut):
                     assert 0, f"Error: PC mismatch at time {get_sim_time(unit='ps')}ps"
 
                 await ClockCycles(clk, 1)
+
+            # compare regfile
+            ref_sim.dump_regfile()
+            ref = ref_sim.regfile
+            sim = sim_regs(dut)
+            sim.insert(0,0)
+
+            diffs = []
+            for i in range(len(sim)):
+                if ref[i] != sim[i]:
+                    diffs.append(i)
+            if len(diffs) > 1:
+                print("Spike:")
+                print(ref_sim.format_regs(ref))
+                print("RTL:")
+                print(ref_sim.format_regs(sim))
+                await ClockCycles(clk, 5)
+                assert 0, f"Error: regfile does not match reference sim in registers: {diffs}"
+
         else:
             for _ in range(step):
                 await valid_instr(dut, clk)
@@ -105,8 +130,6 @@ async def test_verify(dut):
 
     #await ClockCycles(clk, 100000)
     await ClockCycles(clk, 10)
-
-    #sdram.dump(0x0, 0x100)
 
 
 
@@ -156,10 +179,10 @@ def test_runner():
         test_module=Path(__file__).stem,
         waves=True,
         gui=True,
-        test_args=[
-            "+verilator+rand+reset+2",
-            "+verilator+seed+1234",
-        ],
+        # test_args=[
+        #     "+verilator+rand+reset+2",
+        #     "+verilator+seed+5",
+        # ],
     )
 
 if __name__ == "__main__":

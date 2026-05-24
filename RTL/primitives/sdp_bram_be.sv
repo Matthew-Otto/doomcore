@@ -16,7 +16,7 @@ module sdp_bram_be #(
     output logic [DATA_WIDTH-1:0]     rd_data
 );
 
-    logic [DATA_WIDTH-1:0] ram [0:(1<<ADDR_WIDTH)-1];
+    (* ram_style = "block", gowin_attribute = "RAM_Clock_Asynchronous=True" *) logic [DATA_WIDTH-1:0] ram [0:(1<<ADDR_WIDTH)-1];
 
     always_ff @(posedge wr_clk) begin
         for (int i = 0; i < (DATA_WIDTH/8); i=i+1) begin

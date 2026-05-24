@@ -3,26 +3,14 @@
 // direct mapped
 // write through
 
-// when reading, index into tag store and cache
-// if tag match, return value from cache
-// if no tag match, issue read to dram
-    // upon read return, fill cacheline and return data to core
-
-// when writing, immediately issue a write to DRAM (if bus is free)
-// at the same time, index into tag store
-    // if tag match, write value into cache
-    // if no tag match, no nothing
-
 module cache #(
     parameter int MASTER_ID,
     parameter int ADDR_WIDTH,
     parameter int DATA_WIDTH,
     parameter int ID_WIDTH
 ) (
-    input  logic        core_clk,
-    input  logic        core_clk_rst,
-    input  logic        bus_clk,
-    input  logic        bus_clk_rst,
+    input  logic        clk,
+    input  logic        rst,
 
     input  logic        core_flush,
     output logic        core_rdy,
@@ -39,465 +27,382 @@ module cache #(
 
     localparam CACHELINE_OFFSET = 5;
 
-    ////////////////////////////////////////////////////////////////////////
-    //// Reset Logic ///////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////
-
-    // BRAMs can't be cleared asynchronously, must write every address manually
-    // This makes cache instructions like FENCE.I very expensive.
-    // Reset is in core_clk domain, but reset index generation is in bus_clk domain
-
-    logic [7:0] rst_idx;
-    logic rst_active;
-
-    always_ff @(posedge bus_clk) begin
-        if (bus_clk_rst) begin
-            rst_active <= 1;
-            rst_idx <= 8'd255;
-        end else if (rst_active) begin
-            if (rst_idx == 0)
-                rst_active <= 0;
-            else
-                rst_idx <= rst_idx - 1;
-        end
-    end
-
-    // TODO reset CDC
-
 
     ////////////////////////////////////////////////////////////////////////
-    //// Core IDK ///////////////////////////////////////////
+    //// Core Input Latch //////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
-    logic tag_read, tag_read_ready;
+    logic        tag_read, tag_read_ready;
     logic        latch_address;
-    logic [31:0] core_addr_buffer;
     logic        latch_write_data;
-    logic [3:0]  core_wr_en_buffer;
-    logic [31:0] core_write_data_buffer;
+    logic        incr_fill_addr;
+    logic [31:0] addr_buffer;
+    logic [31:0] fill_addr;
+    logic [3:0]  wr_strb_buffer;
+    logic [31:0] write_data_buffer;
 
-    always_ff @(posedge core_clk) begin
+    logic trigger_fill;
+    logic fill_complete;
+    logic pending_fill;
+
+    always_ff @(posedge clk) begin
         tag_read_ready <= tag_read;
 
         if (latch_address)
-            core_addr_buffer <= core_addr;
+            addr_buffer <= core_addr;
 
         if (latch_write_data) begin
-            core_wr_en_buffer <= core_write_val;
-            core_write_data_buffer <= core_write_data;
+            wr_strb_buffer <= core_write_val;
+            write_data_buffer <= core_write_data;
+        end
+
+        if (latch_address) begin
+            fill_addr <= {core_addr[31:CACHELINE_OFFSET], {CACHELINE_OFFSET{1'b0}}};
+        end else if (incr_fill_addr) begin
+            fill_addr <= fill_addr + 4;
+        end
+
+        if (trigger_fill) begin
+            pending_fill <= 1'b1;
+        end else if (core_flush || fill_complete) begin
+            pending_fill <= 1'b0;
         end
     end
+
 
     ////////////////////////////////////////////////////////////////////////
     //// Addressing Logic //////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
-    logic [31:0] core_addr_mux;
-    logic [1:0]  core_byte_os, core_byte_os_buffer;
-    logic [2:0]  core_word_os, core_word_os_buffer;
-    logic [7:0]  core_index, core_index_buffer;
-    logic [18:0] core_tag, core_tag_buffer;
+    logic [1:0]  core_byte_os, buffer_byte_os, fill_byte_os;
+    logic [2:0]  core_word_os, buffer_word_os, fill_word_os;
+    logic [7:0]  core_index, buffer_index, fill_index;
+    logic [18:0] core_tag, buffer_tag, fill_tag;
     
-    assign {core_tag, core_index, core_word_os, core_byte_os} = core_addr_mux;
-    assign {core_tag_buffer, core_index_buffer, core_word_os_buffer, core_byte_os_buffer} = core_addr_buffer;
+    assign {core_tag, core_index, core_word_os, core_byte_os} = core_addr;
+    assign {buffer_tag, buffer_index, buffer_word_os, buffer_byte_os} = addr_buffer;
+    assign {fill_tag, fill_index, fill_word_os, fill_byte_os} = fill_addr;
     
-    
-    
-    ////////////////////////////////////////////////////////////////////////
-    //// Core Interface ////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////
-    logic hit;
-    logic [3:0] core_wr_en;
-    
-    // CDC
-    logic trigger_cache_fill, trigger_cache_fill_cdc;
-    logic trigger_mem_write;
-    logic write_committed, write_committed_cdc;
-
-    enum {
-        CORE_IDLE,
-        CORE_WRITE,
-        CORE_WRITE_WAIT,
-        CORE_READ,
-        CORE_CACHE_FILL,
-        CORE_CACHE_FILL_FLUSHED
-    } core_state, next_core_state;
-
-    always_ff @(posedge core_clk) begin
-        if (rst_active) core_state <= CORE_IDLE;
-        else            core_state <= next_core_state;
-    end
-
-    always_comb begin
-        next_core_state = core_state;
-        core_rdy = 1'b0;
-        core_read_data_val = 1'b0;
-
-        core_addr_mux = core_addr;
-
-        latch_address = 1'b0;
-        latch_write_data = 1'b0;
-        tag_read = 1'b0;
-        core_wr_en = '0;
-        trigger_mem_write = 1'b0;
-        trigger_cache_fill = 1'b0;
-
-
-        case (core_state)           
-            CORE_IDLE : begin
-                if (~rst_active) begin
-                    core_rdy = 1'b1;
-                    if (core_write_val) begin
-                        latch_address = 1'b1;
-                        latch_write_data = 1'b1;
-                        tag_read = 1'b1;
-                        next_core_state = CORE_WRITE;
-                    end else if (core_read_val) begin
-                        latch_address = 1'b1;
-                        tag_read = 1'b1;
-                        next_core_state = CORE_READ;
-                    end
-                end
-            end
-            
-            CORE_WRITE : begin
-                // Write word to DRAM
-                trigger_mem_write = 1'b1;
-
-                // If hit, write word to cache (ties up datastore, must stall one cycle)
-                if (hit) begin
-                    core_wr_en = core_wr_en_buffer;
-                    core_addr_mux = core_addr_buffer;
-                    if (write_committed_cdc) begin
-                        next_core_state = CORE_IDLE;
-                    end else begin
-                        next_core_state = CORE_WRITE_WAIT;
-                    end
-                
-                // If not hit, can service a request this cycle.
-                end else begin
-                    if (write_committed_cdc) begin
-                        core_rdy = 1'b1;
-                        if (core_read_val) begin
-                            latch_address = 1'b1;
-                            tag_read = 1'b1;
-                            next_core_state = CORE_READ;
-                        end else if (core_write_val) begin
-                            latch_address = 1'b1;
-                            latch_write_data = 1'b1;
-                            tag_read = 1'b1;
-                        end else begin
-                            next_core_state = CORE_IDLE;
-                        end
-                    end else begin
-                        next_core_state = CORE_WRITE_WAIT;
-                    end
-                end               
-            end
-
-            CORE_WRITE_WAIT : begin
-                if (write_committed_cdc) begin
-                    core_rdy = 1'b1;
-                    if (core_read_val) begin
-                        latch_address = 1'b1;
-                        tag_read = 1'b1;
-                        next_core_state = CORE_READ;
-                    end else if (core_write_val) begin
-                        latch_address = 1'b1;
-                        latch_write_data = 1'b1;
-                        tag_read = 1'b1;
-                    end else begin
-                        next_core_state = CORE_IDLE;
-                    end
-                end
-            end
-            
-            CORE_READ : begin
-                core_rdy = (hit || core_flush);
-                core_read_data_val = hit;
-
-                if (hit || core_flush) begin
-                    // pipeline reads
-                    if (core_read_val) begin
-                        latch_address = 1'b1;
-                        tag_read = 1'b1;
-
-                    // pipeline writes
-                    end else if (core_write_val) begin
-                        latch_address = 1'b1;
-                        latch_write_data = 1'b1;
-                        tag_read = 1'b1;
-                        trigger_mem_write = 1'b1;
-                        next_core_state = CORE_WRITE;
-
-                    end else begin
-                        next_core_state = CORE_IDLE;
-                    end
-
-                // if miss (and not flush), must fill cacheline from DRAM
-                end else begin
-                    trigger_cache_fill = 1'b1;
-                    core_addr_mux = core_addr_buffer;
-                    next_core_state = CORE_CACHE_FILL;
-                end
-            end
-            
-            CORE_CACHE_FILL : begin
-                core_rdy = hit;
-                core_read_data_val = ~core_flush && hit;
-
-                if (hit) begin
-                    // pipeline reads
-                    if (core_read_val) begin
-                        latch_address = 1'b1;
-                        tag_read = 1'b1;
-                        next_core_state = CORE_READ;
-
-                    // pipeline writes
-                    end else if (core_write_val) begin
-                        latch_address = 1'b1;
-                        latch_write_data = 1'b1;
-                        tag_read = 1'b1;
-                        trigger_mem_write = 1'b1;
-                        next_core_state = CORE_WRITE;
-
-                    end else begin
-                        next_core_state = CORE_IDLE;
-                    end
-                end else begin
-                    tag_read = 1;
-                    core_addr_mux = core_addr_buffer;
-                    if (core_flush)
-                        next_core_state = CORE_CACHE_FILL_FLUSHED;
-                end
-            end
-
-            CORE_CACHE_FILL_FLUSHED : begin
-                core_rdy = hit;
-
-                if (hit) begin
-                    // pipeline reads
-                    if (core_read_val) begin
-                        latch_address = 1'b1;
-                        tag_read = 1'b1;
-                        next_core_state = CORE_READ;
-
-                    // pipeline writes
-                    end else if (core_write_val) begin
-                        latch_address = 1'b1;
-                        latch_write_data = 1'b1;
-                        tag_read = 1'b1;
-                        trigger_mem_write = 1'b1;
-                        next_core_state = CORE_WRITE;
-
-                    end else begin
-                        next_core_state = CORE_IDLE;
-                    end
-                end else begin
-                    tag_read = 1;
-                    core_addr_mux = core_addr_buffer;
-                end
-            end
-        endcase
-    end
-
-
-    ////////////////////////////////////////////////////////////////////////
-    //// Bus Addressing ////////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////
-    logic [1:0]  bus_byte_os;
-    logic [2:0]  bus_word_os;
-    logic [7:0]  bus_index;
-    logic [18:0] bus_tag;
-
-    logic        cacheline_filled;
-    logic [31:0] fill_addr, next_fill_addr;
-    
-    assign {bus_tag, bus_index, bus_word_os, bus_byte_os} = fill_addr;
-
-    logic [7:0]  bus_tag_addr;
-    logic        bus_tag_wr_en;
-    logic [19:0] bus_tag_wr_data;
-
-    always_comb begin : tag_reset_mux
-        if (rst_active) begin
-            bus_tag_wr_en = 1'b1;
-            bus_tag_addr = rst_idx;
-            bus_tag_wr_data = '0;
-        end else begin
-            bus_tag_wr_en = cacheline_filled;
-            bus_tag_addr = bus_index;
-            bus_tag_wr_data = {1'b1,bus_tag};
-        end
-    end
-
 
     ////////////////////////////////////////////////////////////////////////
     //// Tag store /////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
-    logic        core_tag_rd_valid;
-    logic [18:0] core_tag_rd_data;
-
+    
+    logic        tag_hit;
+    logic        ts_wr_en;
+    logic [7:0]  ts_wr_addr, ts_rd_addr;
+    logic [19:0] ts_wr_data;
+    logic        ts_rd_valid;
+    logic [18:0] ts_rd_data;
+    
     sdp_bram #(
         .ADDR_WIDTH(8),
         .DATA_WIDTH(20)
     ) tag_store (
-        .wr_clk(bus_clk),
-        .wr_en(bus_tag_wr_en),
-        .wr_addr(bus_tag_addr),
-        .wr_data(bus_tag_wr_data),
-        .rd_clk(core_clk),
-        .rd_addr(core_index),
-        .rd_data({core_tag_rd_valid,core_tag_rd_data})
+        .wr_clk(clk),
+        .wr_en(ts_wr_en),
+        .wr_addr(ts_wr_addr),
+        .wr_data(ts_wr_data),
+        .rd_clk(clk),
+        .rd_addr(ts_rd_addr),
+        .rd_data({ts_rd_valid,ts_rd_data})
     );
 
-    assign hit = tag_read_ready && core_tag_rd_valid && (core_tag_buffer == core_tag_rd_data);
+    assign tag_hit = tag_read_ready && ts_rd_valid && (buffer_tag == ts_rd_data);
 
 
     ////////////////////////////////////////////////////////////////////////
     //// Data store ////////////////////////////////////////////////////////
     //////////////////////////////////////////////////////////////////////// 
-    logic bus_data_wr_en;
 
-    assign bus_data_wr_en = m_axi.r_ready && m_axi.r_valid;
-
-    tdp_bram_be #(
+    logic [3:0]  ds_wr_en;
+    logic [10:0] ds_wr_addr, ds_rd_addr;
+    logic [31:0] ds_wr_data, ds_rd_data;
+    
+    sdp_bram_be #(
         .ADDR_WIDTH(11),
         .DATA_WIDTH(32)
     ) data_store (
-        .clk_a(core_clk),
-        .addr_a({core_index, core_word_os}),
-        .wr_en_a(core_wr_en),
-        .wr_data_a(core_write_data_buffer),
-        .rd_data_a(core_read_data),
-        .clk_b(bus_clk),
-        .addr_b({bus_index, bus_word_os}),
-        .wr_en_b({4{bus_data_wr_en}}),
-        .wr_data_b(m_axi.r_data),
-        .rd_data_b()
+        .wr_clk(clk),
+        .wr_en(ds_wr_en),
+        .wr_addr(ds_wr_addr),
+        .wr_data(ds_wr_data),
+        .rd_clk(clk),
+        .rd_addr(ds_rd_addr),
+        .rd_data(ds_rd_data)
     );
 
-    ////////////////////////////////////////////////////////////////////////
-    //// Control signal CDC ////////////////////////////////////////////////
-    ////////////////////////////////////////////////////////////////////////
-
-    pulse_shrinker cache_fill_cdc (
-        .clk_fast(bus_clk),
-        .pulse_in(trigger_cache_fill),
-        .pulse_out(trigger_cache_fill_cdc)
-    );
-
-    pulse_stretcher write_commit_cdc (
-        .clk_fast(bus_clk),
-        .pulse_in(write_committed),
-        .pulse_out(write_committed_cdc)
-    );
-
+    assign core_read_data = ds_rd_data;
 
     ////////////////////////////////////////////////////////////////////////
-    //// AXI Bus Interface /////////////////////////////////////////////////
+    //// FSM ///////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
+
+    logic [7:0] rst_idx, next_rst_idx;
+
     enum {
-        BUS_IDLE,
-        BUS_READ_REQ,
-        BUS_READ_WAIT,
-        BUS_PEND_WRITE,
-        BUS_WRITE_SYNC
-    } bus_state, next_bus_state;
+        RESET,
+        IDLE,
+        WRITE,
+        WRITE_WAIT_DATA,
+        WRITE_WAIT_ADDR,
+        WRITE_WAIT,
+        READ,
+        FILL_CACHE,
+        CACHE_FILLED
+    } state, next_state;
 
-    always_ff @(posedge bus_clk) begin
-        if (rst_active) bus_state <= BUS_IDLE;
-        else            bus_state <= next_bus_state;
+    always_ff @(posedge clk) begin
+        if (rst) state <= RESET;
+        else              state <= next_state;
+
+        if (rst) rst_idx <= 8'd255;
+        else              rst_idx <= next_rst_idx;
     end
 
-    always_ff @(posedge bus_clk) begin
-        if (m_axi.ar_ready && m_axi.ar_valid) begin
-            fill_addr <= {core_addr_buffer[31:CACHELINE_OFFSET], {CACHELINE_OFFSET{1'b0}}};
-        end else begin
-            fill_addr <= next_fill_addr;
-        end
+    always_comb begin
+        next_state = state;
+        next_rst_idx = rst_idx;
+
+        core_rdy = 1'b0;
+        core_read_data_val = 1'b0;
+
+        tag_read = 1'b0;
+        latch_address = 1'b0;
+        latch_write_data = 1'b0;
+
+        incr_fill_addr = 1'b0;
+        trigger_fill = 1'b0;
+        fill_complete = 1'b0;
+
+        ts_rd_addr = core_index;
+        
+        ts_wr_en = 1'b0;
+        ts_wr_addr = buffer_index;
+        ts_wr_data = {1'b1,buffer_tag};
+        
+        ds_rd_addr = {core_index, core_word_os};
+
+        ds_wr_en = '0;
+        ds_wr_addr = {fill_index, fill_word_os};
+        ds_wr_data = m_axi.r_data;
+
+        m_axi.aw_valid = 1'b0;
+        m_axi.w_valid = 1'b0;
+        m_axi.ar_valid = 1'b0;
+        m_axi.r_ready = 1'b0;
+        
+
+        case (state)
+            RESET : begin
+                ts_wr_en = 1'b1;
+                ts_wr_addr = rst_idx;
+                ts_wr_data = '0;
+
+                if (rst_idx == 0)
+                    next_state = IDLE;
+                else
+                    next_rst_idx = rst_idx - 1;
+            end
+
+            IDLE : begin
+                core_rdy = 1'b1;
+                if (core_write_val) begin
+                    latch_address = 1'b1;
+                    latch_write_data = 1'b1;
+                    tag_read = 1'b1;
+                    next_state = WRITE;
+                end else if (core_read_val) begin
+                    latch_address = 1'b1;
+                    tag_read = 1'b1;
+                    next_state = READ;
+                end
+            end
+
+            WRITE : begin
+                if (tag_hit) begin
+                    ds_wr_en = wr_strb_buffer;
+                    ds_wr_addr = {buffer_index, buffer_word_os};
+                    ds_wr_data = write_data_buffer;
+                end 
+
+                m_axi.aw_valid = 1'b1;
+                m_axi.w_valid = 1'b1;
+
+                case ({m_axi.aw_ready, m_axi.w_ready})
+                    2'b11 : begin
+                        core_rdy = 1'b1;
+                        if (core_write_val) begin
+                            latch_address = 1'b1;
+                            latch_write_data = 1'b1;
+                            tag_read = 1'b1;
+                            next_state = WRITE;
+                        end else if (core_read_val) begin
+                            latch_address = 1'b1;
+                            tag_read = 1'b1;
+                            next_state = READ;
+                        end else begin
+                            next_state = IDLE;
+                        end
+                    end
+
+                    2'b10 : next_state = WRITE_WAIT_DATA;
+                    2'b01 : next_state = WRITE_WAIT_ADDR;
+                    2'b00 : next_state = WRITE_WAIT;
+                endcase
+            end
+
+            WRITE_WAIT : begin
+                m_axi.aw_valid = 1'b1;
+                m_axi.w_valid = 1'b1;
+
+                case ({m_axi.aw_ready, m_axi.w_ready})
+                    2'b11 : begin
+                        core_rdy = 1'b1;
+                        if (core_write_val) begin
+                            latch_address = 1'b1;
+                            latch_write_data = 1'b1;
+                            tag_read = 1'b1;
+                            next_state = WRITE;
+                        end else if (core_read_val) begin
+                            latch_address = 1'b1;
+                            tag_read = 1'b1;
+                            next_state = READ;
+                        end else begin
+                            next_state = IDLE;
+                        end
+                    end
+
+                    2'b10 : next_state = WRITE_WAIT_DATA;
+                    2'b01 : next_state = WRITE_WAIT_ADDR;
+                    2'b00 : next_state = WRITE_WAIT;
+                endcase
+            end
+
+            WRITE_WAIT_DATA : begin
+                m_axi.w_valid = 1'b1;
+                if (m_axi.w_ready) begin
+                    core_rdy = 1'b1;
+                    if (core_write_val) begin
+                        latch_address = 1'b1;
+                        latch_write_data = 1'b1;
+                        tag_read = 1'b1;
+                        next_state = WRITE;
+                    end else if (core_read_val) begin
+                        latch_address = 1'b1;
+                        tag_read = 1'b1;
+                        next_state = READ;
+                    end else begin
+                        next_state = IDLE;
+                    end
+                end
+            end
+
+            WRITE_WAIT_ADDR : begin
+                m_axi.aw_valid = 1'b1;
+                if (m_axi.aw_ready) begin
+                    core_rdy = 1'b1;
+                    if (core_write_val) begin
+                        latch_address = 1'b1;
+                        latch_write_data = 1'b1;
+                        tag_read = 1'b1;
+                        next_state = WRITE;
+                    end else if (core_read_val) begin
+                        latch_address = 1'b1;
+                        tag_read = 1'b1;
+                        next_state = READ;
+                    end else begin
+                        next_state = IDLE;
+                    end
+                end
+            end
+
+            READ : begin
+                core_rdy = (tag_hit || core_flush);
+                core_read_data_val = tag_hit;
+
+                if (tag_hit || core_flush) begin
+                    // pipeline writes
+                    if (core_write_val) begin
+                        latch_address = 1'b1;
+                        latch_write_data = 1'b1;
+                        tag_read = 1'b1;
+                        next_state = WRITE;
+                    
+                    // pipeline reads
+                    end else if (core_read_val) begin
+                        latch_address = 1'b1;
+                        tag_read = 1'b1;
+                        next_state = READ;
+
+                    end else begin
+                        next_state = IDLE;
+                    end
+
+                end else begin
+                    m_axi.ar_valid = 1'b1;
+                    trigger_fill = 1'b1;
+                    next_state = FILL_CACHE;
+                end
+            end
+
+            FILL_CACHE : begin
+                m_axi.r_ready = 1'b1;
+                ds_wr_addr = {fill_index, fill_word_os};
+                ds_wr_data = m_axi.r_data;
+
+                if (m_axi.r_valid) begin
+                    ds_wr_en = 4'hF;
+                    incr_fill_addr = 1'b1;
+                    if (m_axi.r_last) begin
+                        // Update tag
+                        ts_wr_en = 1'b1;
+                        ts_wr_addr = buffer_index;
+                        ts_wr_data = {1'b1,buffer_tag};                
+
+                        // TODO can reduce the latency here by one cycle
+                        ds_rd_addr = {buffer_index, buffer_word_os};
+                        next_state = CACHE_FILLED;
+                    end
+                end
+            end
+
+            CACHE_FILLED : begin
+                core_read_data_val = pending_fill && ~core_flush;
+                fill_complete = 1'b1;
+
+                core_rdy = 1'b1;
+                if (core_write_val) begin
+                    latch_address = 1'b1;
+                    latch_write_data = 1'b1;
+                    tag_read = 1'b1;
+                    next_state = WRITE;
+                end else if (core_read_val) begin
+                    latch_address = 1'b1;
+                    tag_read = 1'b1;
+                    next_state = READ;
+                end else begin
+                    next_state = IDLE;
+                end
+            end
+        endcase
     end
 
-    assign m_axi.ar_addr  = {core_addr_buffer[31:CACHELINE_OFFSET], {CACHELINE_OFFSET{1'b0}}};
-    assign m_axi.ar_len   = 8'd7;     // 8 beats (ARLEN is length - 1)
-    assign m_axi.ar_size  = 3'b010;   // 4 bytes per beat (32-bit bus)
-    assign m_axi.ar_burst = 2'b01;    // INCR burst type
-    assign m_axi.ar_id    = MASTER_ID;
-
-    assign m_axi.aw_addr  = core_addr_buffer;
+    
+    assign m_axi.aw_addr  = addr_buffer;
     assign m_axi.aw_len   = '0;
     assign m_axi.aw_size  = '0;
     assign m_axi.aw_burst = '0;
     assign m_axi.aw_id    = MASTER_ID;
     
-    assign m_axi.w_data   = core_write_data_buffer;
-    assign m_axi.w_strb   = core_wr_en_buffer;
+    assign m_axi.w_data   = write_data_buffer;
+    assign m_axi.w_strb   = wr_strb_buffer;
     assign m_axi.w_last   = 1'b1;
     assign m_axi.b_ready  = 1'b1;
 
-    always_comb begin
-        next_bus_state = bus_state;
-        next_fill_addr = fill_addr;
-
-        m_axi.ar_valid = 1'b0;
-        m_axi.aw_valid = 1'b0;
-        m_axi.w_valid = 1'b0;
-        m_axi.r_ready  = 1'b0;
-        cacheline_filled = 1'b0;
-        write_committed = 1'b0;
-
-        case (bus_state)
-            BUS_IDLE : begin
-                if (trigger_cache_fill_cdc) begin
-                    m_axi.ar_valid = 1'b1;
-                    if (m_axi.ar_ready)
-                        next_bus_state = BUS_READ_WAIT;
-                    else
-                        next_bus_state = BUS_READ_REQ;
-                end else if (trigger_mem_write) begin
-                    // BOZO the bus may accept aw and w at different times
-                    m_axi.aw_valid = 1'b1;
-                    m_axi.w_valid = 1'b1;
-                    if (~m_axi.aw_ready) begin
-                        next_bus_state = BUS_PEND_WRITE;
-                    end else begin
-                        write_committed = 1'b1;
-                        next_bus_state = BUS_WRITE_SYNC;
-                    end
-                end
-            end
-
-            BUS_READ_REQ : begin
-                m_axi.ar_valid = 1'b1;
-                if (m_axi.ar_ready)
-                    next_bus_state = BUS_READ_WAIT;
-            end
-                
-            BUS_READ_WAIT : begin
-                m_axi.r_ready = 1'b1;
-                if (m_axi.r_valid) begin
-                    next_fill_addr = fill_addr + 32'd4;
-                    if (m_axi.r_last) begin
-                        cacheline_filled = 1'b1;
-                        next_bus_state = BUS_IDLE;
-                    end
-                end
-            end
-
-            BUS_PEND_WRITE : begin
-                // BOZO the bus may accept aw and w at different times
-                m_axi.aw_valid = 1'b1;
-                m_axi.w_valid = 1'b1;
-                if (m_axi.aw_ready) begin
-                    write_committed = 1'b1;
-                    next_bus_state = BUS_WRITE_SYNC;
-                end
-            end
-
-            BUS_WRITE_SYNC : begin
-                write_committed = 1'b1;
-                next_bus_state = BUS_IDLE;
-            end
-        endcase
-    end
+    assign m_axi.ar_addr  = fill_addr;
+    assign m_axi.ar_len   = 8'd7;     // 8 beats (ARLEN is length - 1)
+    assign m_axi.ar_size  = 3'b010;   // 4 bytes per beat (32-bit bus)
+    assign m_axi.ar_burst = 2'b01;    // INCR burst type
+    assign m_axi.ar_id    = MASTER_ID;
 
 endmodule : cache

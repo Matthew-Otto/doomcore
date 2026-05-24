@@ -11,7 +11,7 @@ module top #(
     input  logic       btn2,
 
     //input  logic       uart_rx,
-    //output logic       uart_tx,
+    output logic       uart_tx,
 
     // HDMI
     output logic tmds_clk_p, // pixel clock
@@ -38,32 +38,38 @@ module top #(
     //// Clocks ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
-    logic core_clk;  // main system clock
-    logic bus_clk;   // bus clock
+    logic sys_clk;  // main system clock
     logic p_clk;     // HDMI pixel clock
     logic s_clk;     // HDMI serializer clock (10 bit / p_clk) (DDR)
 
-    logic core_pll_lock;
+    logic sys_pll_lock;
     logic sclk_pll_lock;
 
-    localparam CORE_CLK_FREQ = 80_000_000;
-    localparam BUS_CLK_FREQ = 160_000_000;
+    localparam SYS_CLK_FREQ = 120_000_000;
 
 `ifndef VERILATOR
     //// System Clock Generator
     rPLL #(
         .FCLKIN("27.0"),
-        .DYN_SDIV_SEL(2), // -> Divide CLKOUT by 2
+
         // .IDIV_SEL(8),    // -> PFD = 3.0 MHz (range: 3-500 MHz)
         // .FBDIV_SEL(52), // -> CLKOUT = 159.0 MHz (range: 3.90625-625 MHz)
         // .ODIV_SEL(4) // -> VCO = 636.0 MHz (range: 500-1250 MHz)
         
-        .IDIV_SEL(8), // -> PFD = 3.0 MHz (range: 3-500 MHz)
-        .FBDIV_SEL(39), // -> CLKOUT = 120.0 MHz (range: 3.90625-625 MHz)
-        .ODIV_SEL(8) // -> VCO = 960.0 MHz (range: 500-1250 MHz)
-    ) busclk_pll (
+        // .IDIV_SEL(8), // -> PFD = 3.0 MHz (range: 3-500 MHz)
+        // .FBDIV_SEL(39), // -> CLKOUT = 120.0 MHz (range: 3.90625-625 MHz)
+        // .ODIV_SEL(8) // -> VCO = 960.0 MHz (range: 500-1250 MHz)
+
+        .IDIV_SEL(6), // -> PFD = 3.857142857142857 MHz (range: 3-500 MHz)
+        .FBDIV_SEL(25), // -> CLKOUT = 100.28571428571429 MHz (range: 3.90625-625 MHz)
+        .ODIV_SEL(8) // -> VCO = 802.2857142857143 MHz (range: 500-1250 MHz)
+
+        // .IDIV_SEL(0), // -> PFD = 27.0 MHz (range: 3-500 MHz)
+        // .FBDIV_SEL(2), // -> CLKOUT = 81.0 MHz (range: 3.90625-625 MHz)
+        // .ODIV_SEL(8) // -> VCO = 648.0 MHz (range: 500-1250 MHz)
+    ) sysclk_pll (
         .CLKOUTP(),
-        .CLKOUTD(core_clk),
+        .CLKOUTD(),
         .CLKOUTD3(),
         .RESET(1'b0),
         .RESET_P(1'b0),
@@ -75,8 +81,8 @@ module top #(
         .DUTYDA(4'b0),
         .FDLY(4'b0),
         .CLKIN(clk),
-        .CLKOUT(bus_clk),
-        .LOCK(core_pll_lock)
+        .CLKOUT(sys_clk),
+        .LOCK(sys_pll_lock)
     );
 
     //// Serial Clock Generator
@@ -124,10 +130,10 @@ module top #(
 
 `ifndef VERILATOR
     debounce #(
-        .CLK_FREQ(CORE_CLK_FREQ),
-        .PULSE(1)
+        .CLK_FREQ(SYS_CLK_FREQ),
+        .PULSE(0)
     ) db_1 (
-        .clk(core_clk),
+        .clk(sys_clk),
         .db_in(btn1),
         .db_out(btn1_db)
     );
@@ -139,61 +145,53 @@ module top #(
     //// Resets ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
-    logic core_clk_rst;
-    logic bus_clk_rst;
+    logic sys_clk_rst;
     logic p_clk_rst;
+    logic s_clk_rst;
 
-    logic async_reset;
     logic reset_i;
 
     init_rst #(
         .DELAY(50)
     ) init_rst_i (
-        .clk(core_clk),
-        .reset(reset_i)
+        .clk(sys_clk),
+        .pll_lock(sys_pll_lock && sclk_pll_lock),
+        .rst_out(reset_i)
     );
 
-`ifndef VERILATOR
-    assign async_reset = reset_i | btn1_db | ~core_pll_lock | ~sclk_pll_lock;
-`else
-    assign async_reset = reset_i | btn1_db; 
-`endif
+    assign sys_clk_rst = reset_i | btn1_db; 
 
-    assign led[0] = ~async_reset;
+    assign led[0] = ~sys_clk_rst;
 
-    reset_sync core_reset_gen (
-        .clk(core_clk),
-        .async_reset,
-        .sync_reset(core_clk_rst)
-    );
-
-    reset_sync bus_reset_gen (
-        .clk(bus_clk),
-        .async_reset,
-        .sync_reset(bus_clk_rst)
-    );
-
-    reset_sync display_reset_gen (
-        .clk(p_clk),
-        .async_reset,
+    reset_sync #(
+        .STRETCH(10)
+    ) display_reset_gen (
+        .async_reset(sys_clk_rst),
+        .sync_clk(p_clk),
         .sync_reset(p_clk_rst)
     );
 
-    //// Manual Reset Duplication
-    (* keep = "true" *) logic bus_clk_rst_p1;
-    (* keep = "true" *) logic bus_clk_rst_core;
-    (* keep = "true" *) logic bus_clk_rst_xbar_n;
-    (* keep = "true" *) logic bus_clk_rst_sdram;
-    (* keep = "true" *) logic bus_clk_rst_rom;
-    (* keep = "true" *) logic bus_clk_rst_display;
+    reset_sync #(
+        .STRETCH(10)
+    ) serial_reset_gen (
+        .async_reset(sys_clk_rst),
+        .sync_clk(s_clk),
+        .sync_reset(s_clk_rst)
+    );
 
-    always_ff @(posedge bus_clk) begin
-        bus_clk_rst_p1 <= bus_clk_rst;
-        bus_clk_rst_core <= bus_clk_rst_p1;
-        bus_clk_rst_xbar_n <= ~bus_clk_rst_p1;
-        bus_clk_rst_sdram <= bus_clk_rst_p1;
-        bus_clk_rst_rom <= bus_clk_rst_p1;
-        bus_clk_rst_display <= bus_clk_rst_p1;
+    //// Manual Reset Duplication
+    (* keep = "true" *) logic sys_clk_rst_core;
+    (* keep = "true" *) logic sys_clk_rst_xbar_n;
+    (* keep = "true" *) logic sys_clk_rst_sdram;
+    (* keep = "true" *) logic sys_clk_rst_rom;
+    (* keep = "true" *) logic sys_clk_rst_display;
+
+    always_ff @(posedge sys_clk) begin
+        sys_clk_rst_core <= sys_clk_rst;
+        sys_clk_rst_xbar_n <= ~sys_clk_rst;
+        sys_clk_rst_sdram <= sys_clk_rst;
+        sys_clk_rst_rom <= sys_clk_rst;
+        sys_clk_rst_display <= sys_clk_rst;
     end
 
 
@@ -206,7 +204,7 @@ module top #(
 `ifdef VERILATOR
     initial begin
         $assertoff(0);
-        @(posedge bus_clk_rst_xbar_n);
+        @(posedge sys_clk_rst_xbar_n);
         $asserton(0);
     end
 `endif
@@ -224,7 +222,7 @@ module top #(
 
     localparam axi_pkg::xbar_cfg_t XbarCfg = '{
         NoSlvPorts:         2, // 2 Masters
-        NoMstPorts:         3, // 4 Slaves
+        NoMstPorts:         4, // 4 Slaves
         MaxMstTrans:        0, // Max outstanding transactions
         MaxSlvTrans:        1,
         FallThrough:        1'b0,
@@ -235,7 +233,7 @@ module top #(
         UniqueIds:          1'b1,
         AxiAddrWidth:       AXI_ADDR_WIDTH,
         AxiDataWidth:       AXI_DATA_WIDTH,
-        NoAddrRules:        3  // One rule per slave // BOZO 4
+        NoAddrRules:        4  // One rule per slave
     };
 
     localparam int AXI_MST_ID_WIDTH = AXI_ID_WIDTH + $clog2(XbarCfg.NoSlvPorts);
@@ -247,8 +245,8 @@ module top #(
     localparam rule_t [XbarCfg.NoAddrRules-1:0] ADDR_MAP = '{
         '{idx: 0, start_addr: 32'h2000_0000, end_addr: 32'h2000_FFFF}, // Slave 0 (Boot ROM)
         '{idx: 1, start_addr: 32'h8000_0000, end_addr: 32'h807F_FFFF}, // Slave 1 (SDRAM Controller)
-        '{idx: 2, start_addr: 32'h3000_0000, end_addr: 32'h3000_FFFF}  // Slave 2 (Frame Buffer)
-        //'{idx: 3'd3, start_addr: 32'h4000_0000, end_addr: 32'h4000_FFFF}  // Slave 3 (SD Card Interface)
+        '{idx: 2, start_addr: 32'h3000_0000, end_addr: 32'h3000_FFFF}, // Slave 2 (Frame Buffer)
+        '{idx: 3, start_addr: 32'h4000_0000, end_addr: 32'h4000_FFFF}  // Slave 3 (SD Card Interface)
     };
 
 
@@ -271,8 +269,8 @@ module top #(
         .Cfg            (XbarCfg),
         .rule_t         (rule_t)
     ) i_axi_xbar (
-        .clk_i                 (bus_clk),
-        .rst_ni                (bus_clk_rst_xbar_n),
+        .clk_i                 (sys_clk),
+        .rst_ni                (sys_clk_rst_xbar_n),
         .test_i                (1'b0),
         .slv_ports             (axi_slv_ports),
         .mst_ports             (axi_mst_ports),
@@ -298,10 +296,8 @@ module top #(
         .DATA_WIDTH(AXI_DATA_WIDTH),
         .ID_WIDTH(AXI_ID_WIDTH)
     ) cpu (
-        .core_clk,
-        .core_clk_rst,
-        .bus_clk,
-        .bus_clk_rst(bus_clk_rst_core),
+        .clk(sys_clk),
+        .rst(sys_clk_rst),
         .icache_port(axi_slv_ports[0]),
         .dcache_port(axi_slv_ports[1])
     );
@@ -318,8 +314,8 @@ module top #(
         .ID_WIDTH(AXI_MST_ID_WIDTH),
         .BOOT_ROM_FILE(BOOT_ROM_FILE)
     ) bootrom_i (
-        .clk(bus_clk),
-        .reset(bus_clk_rst_rom),
+        .clk(sys_clk),
+        .reset(sys_clk_rst_rom),
         .s_axi(axi_mst_ports[0])
     );
 
@@ -329,12 +325,12 @@ module top #(
     ////////////////////////////////////////////////////////////////////////
 
     sdram_axi_interface #(
-        .MEM_CLK_FREQ(BUS_CLK_FREQ),
+        .CLK_FREQ(SYS_CLK_FREQ),
         .DATA_WIDTH(AXI_DATA_WIDTH),
         .ID_WIDTH(AXI_MST_ID_WIDTH)
     ) sdram_i (
-        .mem_clk(bus_clk),
-        .reset(bus_clk_rst_sdram),
+        .clk(sys_clk),
+        .reset(sys_clk_rst_sdram),
         .s_axi(axi_mst_ports[1]),
         .O_sdram_clk,
         .O_sdram_cke,
@@ -356,11 +352,12 @@ module top #(
     display_driver #(
         .ID_WIDTH(AXI_MST_ID_WIDTH)
     ) display_driver_i (
-        .bus_clk,
-        .bus_clk_rst(bus_clk_rst_display),
+        .bus_clk(sys_clk),
+        .bus_clk_rst(sys_clk_rst_display),
         .p_clk,
         .p_clk_rst,
         .s_clk,
+        .s_clk_rst,
         .serial_pclk(tmds_clk_p),
         .serial_blue(tmds_d0_p),
         .serial_green(tmds_d1_p),
@@ -376,6 +373,17 @@ module top #(
     // axi_mst_ports[3]
 
 
+    // UART for debug (temp)
+    axi4_uart_tx #(
+        .ID_WIDTH(AXI_MST_ID_WIDTH),
+        .CLK_FREQ(SYS_CLK_FREQ),
+        .BAUD_RATE(115200)
+    ) uart (
+        .clk(sys_clk),
+        .rst(sys_clk_rst_display),
+        .axi_s(axi_mst_ports[3]),
+        .uart_tx
+    );
 
 
 

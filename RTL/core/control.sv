@@ -1,4 +1,5 @@
 module control (
+    input  logic rst,
     input  logic branch_EX,
     input  logic ready_LS,
 
@@ -67,13 +68,13 @@ module control (
 
     // pipeline control
     assign stall_LS = LSU_busy;
-    assign flush_LS = 1'b0;
+    assign flush_LS = rst;
 
     assign stall_EX = stall_LS;
-    assign flush_EX = source_hazard_EX || source_hazard_LS || branch_EX;
+    assign flush_EX = rst || branch_EX;
     
     assign stall_DE = stall_EX || source_hazard_EX || source_hazard_LS;
-    assign flush_DE = branch_EX;
+    assign flush_DE = rst || branch_EX;
     
     assign stall_FE = stall_DE;
 

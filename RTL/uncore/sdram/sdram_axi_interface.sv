@@ -9,11 +9,11 @@
 
 
 module sdram_axi_interface #(
-    parameter int MEM_CLK_FREQ,
+    parameter int CLK_FREQ,
     parameter int DATA_WIDTH = 32,
     parameter int ID_WIDTH
 ) (
-    input  logic        mem_clk,
+    input  logic        clk,
     input  logic        reset,
 
     AXI_BUS.Slave       s_axi,
@@ -62,7 +62,7 @@ module sdram_axi_interface #(
     assign s_axi.r_resp = 2'b00; // OKAY
     assign s_axi.r_id = resp_id;
 
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) state <= IDLE;
         else       state <= next_state;
 
@@ -87,7 +87,7 @@ module sdram_axi_interface #(
 
         case (state)
             IDLE : begin
-                if (s_axi.aw_valid && s_axi.w_valid) begin
+                if (s_axi.aw_valid) begin
                     next_addr = s_axi.aw_addr[22:2];
                     next_state = WRITE_WAIT;
                 end else if (s_axi.ar_valid) begin
@@ -136,7 +136,7 @@ module sdram_axi_interface #(
     end
 
     // Write response
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset || (s_axi.b_ready && s_axi.b_valid)) begin
             s_axi.b_valid <= 1'b0;
         end else if (trigger_wr_resp) begin
@@ -146,7 +146,7 @@ module sdram_axi_interface #(
     end
 
     // Read Beat Tracking
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (reset) begin
             r_burst_len <= '0;
             r_burst_cnt <= '0;
@@ -161,7 +161,7 @@ module sdram_axi_interface #(
     end
 
     // ID loopback
-    always_ff @(posedge mem_clk) begin
+    always_ff @(posedge clk) begin
         if (write)
             resp_id <= s_axi.aw_id;
         else if (read)
@@ -170,9 +170,9 @@ module sdram_axi_interface #(
 
 
     sdram_controller #(
-        .MEM_CLK_FREQ(MEM_CLK_FREQ)
+        .CLK_FREQ(CLK_FREQ)
     ) sdram_controller_i (
-        .mem_clk,
+        .clk,
         .reset,
         .stop,
         .read,

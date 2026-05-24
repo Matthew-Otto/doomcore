@@ -6,6 +6,7 @@ module display_driver #(
     input  logic p_clk,
     input  logic p_clk_rst,
     input  logic s_clk,
+    input  logic s_clk_rst,
 
     output logic serial_pclk,
     output logic serial_blue,
@@ -36,9 +37,9 @@ module display_driver #(
     localparam V_TOTAL  = V_ACTIVE + V_FRONT + V_SYNC + V_BACK; // 525
 
 
-    logic       de;
-    logic       hsync;
-    logic       vsync;
+    logic       de, de_d;
+    logic       hsync, hsync_d;
+    logic       vsync, vsync_d;
 
     logic [9:0] x_count, y_count;
 
@@ -49,6 +50,9 @@ module display_driver #(
             de      <= '0;
             hsync   <= '0;
             vsync   <= '0;
+            de_d    <= '0;
+            hsync_d <= '0;
+            vsync_d <= '0;
         end else begin
             if (x_count == H_TOTAL-1) begin
                 x_count <= 0;
@@ -62,9 +66,12 @@ module display_driver #(
             end
 
             de <= (x_count < H_ACTIVE) && (y_count < V_ACTIVE);
+            de_d <= de;
             
             hsync <= (x_count >= H_SYNC_START) && (x_count < H_SYNC_END);
             vsync <= (y_count >= V_SYNC_START) && (y_count < V_SYNC_END);
+            hsync_d <= hsync;
+            vsync_d <= vsync;
         end
     end
 
@@ -120,15 +127,15 @@ module display_driver #(
     tmds_encoder blue_encoder (
         .p_clk,
         .reset(p_clk_rst),
-        .de,
-        .ctrl({vsync, hsync}),
+        .de(de_d),
+        .ctrl({vsync_d, hsync_d}),
         .color_value(blue_value),
         .encoded(blue_symbol)
     );
     tmds_encoder green_encoder (
         .p_clk,
         .reset(p_clk_rst),
-        .de,
+        .de(de_d),
         .ctrl(2'b0),
         .color_value(green_value),
         .encoded(green_symbol)
@@ -136,7 +143,7 @@ module display_driver #(
     tmds_encoder red_encoder (
         .p_clk,
         .reset(p_clk_rst),
-        .de,
+        .de(de_d),
         .ctrl(2'b0),
         .color_value(red_value),
         .encoded(red_symbol)

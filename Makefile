@@ -101,8 +101,8 @@ $(PNR_OUT): $(SYNTH_OUT) $(CST) $(SDC)
 		--vopt cst=$(CST) \
 		--log $(PNR_REPORT) \
 		--sdc $(SDC) \
-		--seed 8414909061171736391
-#-r
+		-r
+# --seed 8414909061171736391
 	@printf "\nPnR Warnings:\n"
 	@grep -i "warning" $(PNR_REPORT) || true
 
@@ -154,7 +154,7 @@ waves:
 # Clean All
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -rf $(SIM_DIR)sim_build
+	$(MAKE) -C $(FIRMWARE_DIR) clean
 	rm -rf $(SIM_DIR)__pycache__
 	rm -f $(SIM_DIR)results.xml
-	$(MAKE) -C $(FIRMWARE_DIR) clean
+	rm -rf $(SIM_DIR)sim_build

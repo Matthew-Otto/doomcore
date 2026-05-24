@@ -59,14 +59,18 @@ module decode (
             9'b110?1_???_?,  // Jumps
             9'b00101_???_?,  // AUIPC
             9'b0?000_???_?,  // Load/Store
-            9'b0?100_000_0 : alu_op = ADDER_OP;
-            9'b0?100_01?_0 : alu_op = COMP_OP;
+            9'b00100_000_?,  // ADDI
+            9'b01100_000_0 : alu_op = ADDER_OP;
             9'b01100_???_1 : alu_op = MUL_OP;
-            9'b0?100_100_0 : alu_op = XOR_OP;
-            9'b0?100_110_0 : alu_op = OR_OP;
-            9'b0?100_111_0 : alu_op = AND_OP;
-            9'b0?100_001_0,
-            9'b0?100_101_0 : alu_op = SHIFTER_OP;
+            9'b00100_01?_?,
+            9'b01100_01?_0 : alu_op = COMP_OP;
+            9'b00100_100_?,
+            9'b01100_100_0 : alu_op = XOR_OP;
+            9'b00100_110_?,
+            9'b01100_110_0 : alu_op = OR_OP;
+            9'b00100_111_?,
+            9'b01100_111_0 : alu_op = AND_OP;
+            9'b0?100_?01_0 : alu_op = SHIFTER_OP;
             default        : alu_op = ADDER_OP;
         endcase
     end
