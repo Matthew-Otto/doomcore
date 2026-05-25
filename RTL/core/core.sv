@@ -8,6 +8,8 @@ module core #(
     input  logic        clk,
     input  logic        rst,
 
+    input  logic        timer_int,
+
     AXI_BUS.Master      icache_port,
     AXI_BUS.Master      dcache_port
 );
@@ -17,11 +19,14 @@ module core #(
     ////////////////////////////////////////////////////////////////////////
 
     logic        stall_FE;
-    logic        valid_FE;
-    logic [31:0] PC_FE;
-    logic [31:0] instr_FE;
     logic        branch_EX;
     logic [31:0] branch_target_EX;
+
+    struct packed {
+        logic        valid;
+        logic [31:0] PC;
+        logic [31:0] instr;
+    } FE_o, DE_i;
 
     fetch #(
         .ADDR_WIDTH(ADDR_WIDTH),
@@ -33,35 +38,30 @@ module core #(
         .stall_FE,
         .branch(branch_EX),
         .branch_target(branch_target_EX),
-        .valid_FE(valid_FE),
-        .instr_FE(instr_FE),
-        .PC_FE(PC_FE),
+        .valid_FE(FE_o.valid),
+        .instr_FE(FE_o.instr),
+        .PC_FE(FE_o.PC),
         .icache_port
     );
 
 
     ////////////////////////////////////////////////////////////////////////
-    //// FE skid buffer ////////////////////////////////////////////////////
+    //// FE:DE Pipeline Register ///////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
     logic flush_DE;
     logic stall_DE;
-    logic valid_DE_i;
-    logic [31:0] PC_DE;
-    logic [31:0] instr_DE;
 
-    skid_buffer #(
-        .DATA_WIDTH(64)
-    ) skid_buffer_i (
+    pipeline_reg #(
+        .WIDTH($bits(FE_o))
+    ) pipeline_fe_de (
         .clk(clk),
-        .reset(rst || flush_DE),
-        .input_ready(),
-        .input_valid(valid_FE),
-        .input_data({PC_FE,instr_FE}),
-        .output_ready(~stall_DE),
-        .output_valid(valid_DE_i),
-        .output_data({PC_DE,instr_DE})
+        .rst(flush_DE),
+        .en(~stall_DE),
+        .in(FE_o),
+        .out(DE_i)
     );
+
 
     ////////////////////////////////////////////////////////////////////////
     //// Decode ////////////////////////////////////////////////////////////
@@ -71,6 +71,7 @@ module core #(
         logic        valid;
         logic [31:0] PC;
         logic [31:0] instr;
+        logic        wfi;
 
         logic [4:0]  rd_addr;
         logic [4:0]  rs1_addr;
@@ -103,12 +104,13 @@ module core #(
         logic [31:0] imm_j;
     } DE_o, EX_i;
   
-    assign DE_o.valid = valid_DE_i && ~stall_DE;
-    assign DE_o.PC = PC_DE;
-    assign DE_o.instr = instr_DE;
+    assign DE_o.valid = DE_i.valid && ~stall_DE;
+    assign DE_o.PC = DE_i.PC;
+    assign DE_o.instr = DE_i.instr;
 
     decode decode_unit (
-        .instr(instr_DE),
+        .instr(DE_i.instr),
+        .is_wfi(DE_o.wfi),
         .rd_addr(DE_o.rd_addr),
         .rs1_addr(DE_o.rs1_addr),
         .rs2_addr(DE_o.rs2_addr),
@@ -303,11 +305,16 @@ module core #(
     ////////////////////////////////////////////////////////////////////////
 
     control control_i (
+        .clk,
         .rst,
+
+        .interrupt(timer_int),
+        .wfi(EX_i.wfi),
+
         .branch_EX,
         .ready_LS,
 
-        .valid_DE(valid_DE_i),
+        .valid_DE(DE_i.valid),
         .valid_EX(EX_i.valid),
         .valid_LS(LS_i.valid),
 

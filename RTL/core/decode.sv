@@ -5,6 +5,8 @@
 module decode (
     input  logic [31:0] instr,
 
+    output logic        is_wfi,
+
     output logic [4:0]  rd_addr,
     output logic [4:0]  rs1_addr,
     output logic [4:0]  rs2_addr,
@@ -38,15 +40,19 @@ module decode (
     logic [4:0]  op;
     logic [2:0]  funct3;
     logic [6:0]  funct7;
+    logic [11:0] funct12;
 
     assign op = instr[6:2];
     assign is_imm = ~op[3];
     assign funct3 = instr[14:12];
     assign funct7 = instr[31:25];
+    assign funct12 = instr[31:20];
 
     assign rd_addr = instr[7+:5];
     assign rs1_addr = instr[15+:5];
     assign rs2_addr = instr[20+:5];
+
+    assign is_wfi = (op == 5'b11100) && (funct12 == 12'h105);
 
     // instructions that write to the register file
     // (ALU and Jumps, no Loads)

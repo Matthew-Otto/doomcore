@@ -274,6 +274,8 @@ module top #(
     //// CPU ///////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
+    logic vsync, vsync_core;
+
     AXI_BUS #(
         .AXI_ADDR_WIDTH (AXI_ADDR_WIDTH),
         .AXI_DATA_WIDTH (AXI_DATA_WIDTH),
@@ -287,9 +289,16 @@ module top #(
         .ID_WIDTH(AXI_ID_WIDTH)
     ) cpu (
         .clk(sys_clk),
-        .rst(sys_clk_rst),
+        .rst(sys_clk_rst_core),
+        .timer_int(vsync_core),
         .icache_port(axi_slv_ports[0]),
         .dcache_port(axi_slv_ports[1])
+    );
+
+    slow_to_fast_cdc vsync_cdc (
+        .clk(sys_clk),
+        .data_in(vsync),
+        .data_out(vsync_core)
     );
 
 
@@ -347,6 +356,7 @@ module top #(
         .p_clk,
         .p_clk_rst,
         .s_clk,
+        .vsync,
         .serial_pclk(tmds_clk_p),
         .serial_blue(tmds_d0_p),
         .serial_green(tmds_d1_p),
@@ -362,6 +372,19 @@ module top #(
     // axi_mst_ports[3]
 
 
+
+    ////////////////////////////////////////////////////////////////////////
+    //// Timer /////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////////////////////////
+
+    // interrupt_timer #(
+    //     .CLK_FREQ(SYS_CLK_FREQ),
+    //     .TIMER_US(28571)
+    // ) interrupt_timer_i (
+    //     .clk(sys_clk),
+    //     .rst(sys_clk_rst_core),
+    //     .interrupt(timer_int)
+    // );
 
 
 endmodule : top

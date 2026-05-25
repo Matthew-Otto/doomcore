@@ -7,6 +7,8 @@ module display_driver #(
     input  logic p_clk_rst,
     input  logic s_clk,
 
+    output logic vsync,
+
     output logic serial_pclk,
     output logic serial_blue,
     output logic serial_green,
@@ -38,7 +40,7 @@ module display_driver #(
 
     logic       de, de_d;
     logic       hsync, hsync_d;
-    logic       vsync, vsync_d;
+    logic       vsync_d;
 
     logic [9:0] x_count, y_count;
 

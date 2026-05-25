@@ -55,6 +55,8 @@ void __attribute__((noreturn)) bootloader(void) {
     // Draw a picture to the frame buffer and then spin forever
     volatile uint32_t *fb_base = (volatile uint32_t *)0x30000000;
 
+    asm("wfi");
+
     while (1) {
         for (int x = 0; x < 80; x++) {
 
@@ -68,7 +70,8 @@ void __attribute__((noreturn)) bootloader(void) {
                 fb_base[x + y * 80] = 0xC0C0C0C0;
             }
 
-            for (int d = 0; d < 140000; d++) asm volatile ("nop");
+            asm("wfi");
+            asm("wfi");
         }
     }
 }

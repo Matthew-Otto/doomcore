@@ -1,5 +1,10 @@
 module control (
+    input  logic clk,
     input  logic rst,
+
+    input  logic interrupt,
+    input  logic wfi,
+
     input  logic branch_EX,
     input  logic ready_LS,
 
@@ -33,6 +38,15 @@ module control (
     input  logic       ld_inflight_LS,
     input  logic       ld_valid_LS
 );
+
+    // Stall when waiting for interrupts
+    logic wfi_stall;
+
+    always_ff @(posedge clk) begin
+        if (rst || interrupt) wfi_stall <= 1'b0;
+        else if (wfi && valid_EX && ~stall_EX) wfi_stall <= 1'b1;
+    end
+
 
     logic rd_match_EX;
     logic rs1_match_EX;
@@ -78,7 +92,7 @@ module control (
     assign stall_LS = LSU_busy;
     assign flush_LS = rst;
 
-    assign stall_EX = stall_LS;
+    assign stall_EX = stall_LS || wfi_stall;
     assign flush_EX = rst || branch_EX;
     
     assign stall_DE = stall_EX || source_hazard_EX || source_hazard_LS;

@@ -25,6 +25,7 @@ module fetch #(
 );
 
     logic [31:0] PC_reg;
+    logic [31:0] PC_last;
     logic [31:0] fetch_PC;
     logic [31:0] next_PC;
     logic        cache_ready;
@@ -36,10 +37,12 @@ module fetch #(
             PC_reg <= RESET_PC;
         end else if (branch || (~stall_FE && cache_ready)) begin
             PC_reg <= next_PC;
+            PC_last <= PC_reg;
         end
     end
 
-    assign fetch_PC = branch ? branch_target : PC_reg;
+    assign fetch_PC = stall_FE ? PC_last :
+                      branch ? branch_target : PC_reg;
 
     cache #(
         .MASTER_ID(0),
@@ -52,7 +55,7 @@ module fetch #(
         .core_flush(branch),
         .core_rdy(cache_ready),
         .core_addr(fetch_PC),
-        .core_read_val(~stall_FE),
+        .core_read_val(1'b1),
         .core_write_val('0),
         .core_write_data('0),
         .fill_in_progress(),
