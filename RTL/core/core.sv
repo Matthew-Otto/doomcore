@@ -8,8 +8,6 @@ module core #(
     input  logic        clk,
     input  logic        rst,
 
-    output logic utx, // BOZO
-
     AXI_BUS.Master      icache_port,
     AXI_BUS.Master      dcache_port
 );
@@ -271,7 +269,6 @@ module core #(
         .ld_inflight,
         .ld_rd_addr,
         .ld_rd_data,
-        .utx, // BOZO
         .dcache_port
     );
 

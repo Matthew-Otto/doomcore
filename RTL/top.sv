@@ -11,7 +11,7 @@ module top #(
     input  logic       btn2,
 
     //input  logic       uart_rx,
-    output logic       uart_tx,
+    //output logic       uart_tx,
 
     // HDMI
     output logic tmds_clk_p, // pixel clock
@@ -96,11 +96,11 @@ module top #(
         .DUTYDA(4'b0),
         .FDLY(4'b0),
         .CLKIN(clk),    // 27.0 MHz
-        .CLKOUT(s_clk_gen), // 126.0 MHz
+        .CLKOUT(s_clk), // 126.0 MHz
         .LOCK(sclk_pll_lock)
     );
 
-    BUFG s_clk_buf (.I(s_clk_gen), .O(s_clk));
+    //BUFG s_clk_buf (.I(s_clk_gen), .O(s_clk));
 
     //// Pixel Clock Generator
     CLKDIV #(
@@ -215,9 +215,9 @@ module top #(
         NoMstPorts:         3, // 4 Slaves
         MaxMstTrans:        0, // Max outstanding transactions
         MaxSlvTrans:        1,
-        FallThrough:        1'b0,
+        FallThrough:        1'b1,
         LatencyMode:        axi_pkg::CUT_ALL_PORTS, // CUT_MST_PORTS
-        PipelineStages:     32'd1,
+        PipelineStages:     32'd0,
         AxiIdWidthSlvPorts: AXI_ID_WIDTH,
         AxiIdUsedSlvPorts:  AXI_ID_WIDTH,
         UniqueIds:          1'b1,
@@ -288,7 +288,6 @@ module top #(
     ) cpu (
         .clk(sys_clk),
         .rst(sys_clk_rst),
-        .utx(uart_tx), // BOZO
         .icache_port(axi_slv_ports[0]),
         .dcache_port(axi_slv_ports[1])
     );

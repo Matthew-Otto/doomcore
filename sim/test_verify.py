@@ -66,9 +66,10 @@ async def test_verify(dut):
 
     tracing = True
     iters = 1000000
-    step = 10000
+    step = 1000
 
     # await ClockCycles(clk, 50000)
+    # return
     # await ClockCycles(busclk, 1)
     # dut.btn1_db.value = 1
     # await ClockCycles(clk, 1)

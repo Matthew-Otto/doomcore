@@ -78,13 +78,9 @@ $(SYNTH_OUT): $(SRC) $(BOOTLOADER_HEX) | $(BUILD_DIR)
 	@echo "========================================"
 	@echo "Running synthesis..."
 	@echo "========================================"
-#	$(YOSYS) -l $(SYNTH_REPORT) -m slang -p "read_verilog -sv RTL/uncore/video/frame_buffer.sv RTL/uncore/video/palette.sv; read_slang --ignore-unknown-modules --keep-hierarchy $(filter-out RTL/uncore/video/frame_buffer.sv RTL/uncore/video/palette.sv, $(SRC)); synth_gowin -top top -json $(SYNTH_OUT)"
-#	$(YOSYS) -l $(SYNTH_REPORT) -m slang -p "read_slang --keep-hierarchy $(SRC); synth_gowin -top top -json $(SYNTH_OUT)"
 	$(YOSYS) -l $(SYNTH_REPORT) -m slang -p "\
-        read_verilog -sv RTL/uncore/video/palette.sv; \
-        read_slang --top top --keep-hierarchy $(filter-out RTL/uncore/video/palette.sv, $(SRC)); \
+        read_slang --top top --keep-hierarchy $(SRC); \
         hierarchy -check -top top; \
-		flatten; \
         synth_gowin -top top -abc9 -json $(SYNTH_OUT); \
     "
 	@printf "\nSynthesis Warnings:\n"
@@ -102,7 +98,6 @@ $(PNR_OUT): $(SYNTH_OUT) $(CST) $(SDC)
 		--log $(PNR_REPORT) \
 		--sdc $(SDC) \
 		-r
-# --seed=2381814488898933830
 	@printf "\nPnR Warnings:\n"
 	@grep -i "warning" $(PNR_REPORT) || true
 

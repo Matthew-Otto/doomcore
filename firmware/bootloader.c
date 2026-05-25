@@ -52,16 +52,8 @@ void __attribute__((noreturn)) bootloader(void) {
     // // Jump to program entry
     // ((void (*)(void))PROG_ENTRY)();
 
-    // Draw a picture ot the frame buffer and then spin forever
-    volatile uint32_t *uart = (volatile uint32_t *)0x40000000;
+    // Draw a picture to the frame buffer and then spin forever
     volatile uint32_t *fb_addr;
-
-    *uart = 0x55;
-
-    // for (uint8_t i = 0; i < 256; i++) {
-    //     *uart = i;
-    //     for (volatile int x = 0; x < 1000; x++) {};
-    // }
 
     uint8_t cnt = 0;
     while (1) {
@@ -81,8 +73,6 @@ void __attribute__((noreturn)) bootloader(void) {
                 fb_addr += 1;
             }
         }
-        *uart = cnt;
-        cnt++;
     }
 
     while (1) {}
