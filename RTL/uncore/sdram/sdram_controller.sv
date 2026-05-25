@@ -40,7 +40,7 @@ module sdram_controller #(
     localparam tRFC_ns = 60;
     localparam tPOD_ns = 200_000;
 
-    localparam int tCAS = 2; // 2/3 allowed, 3 required for clk > 100 MHz
+    localparam int tCAS = 3; // 2/3 allowed, 3 required for clk > 100 MHz
     localparam int tWR = 2;
     localparam int tCCD = 1;
     localparam int tMRD = 2;

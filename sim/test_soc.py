@@ -27,7 +27,7 @@ async def test_soc(dut):
 
     # init system
     sdram = SDRAM(dut.sdram_i.sdram_controller_i, clk)
-    sys_clk_ps = round((1/100_000_000) * 1e12)
+    sys_clk_ps = round((1/81_000_000) * 1e12)
     cocotb.start_soon(Clock(clk, sys_clk_ps, unit="ps").start())
     cocotb.start_soon(Clock(pclk, 39.682, unit="ns").start())
 
