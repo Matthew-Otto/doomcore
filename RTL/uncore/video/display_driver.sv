@@ -6,7 +6,6 @@ module display_driver #(
     input  logic p_clk,
     input  logic p_clk_rst,
     input  logic s_clk,
-    input  logic s_clk_rst,
 
     output logic serial_pclk,
     output logic serial_blue,

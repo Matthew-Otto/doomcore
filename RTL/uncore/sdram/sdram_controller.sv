@@ -40,7 +40,7 @@ module sdram_controller #(
     localparam tRFC_ns = 60;
     localparam tPOD_ns = 200_000;
 
-    localparam int tCAS = 3; // 2/3 allowed, 3 required for clk > 100 MHz
+    localparam int tCAS = 2; // 2/3 allowed, 3 required for clk > 100 MHz
     localparam int tWR = 2;
     localparam int tCCD = 1;
     localparam int tMRD = 2;
@@ -300,10 +300,10 @@ module sdram_controller #(
         else if (|tRAS_cnt) tRAS_cnt <= tRAS_cnt - 1;
     end
 
-    logic [$clog2(tWR)-1:0] tWR_cnt; // ACT to PRECHARGE
+    logic [$clog2(tWR+1)-1:0] tWR_cnt; // Write Recovery Time
     always_ff @(posedge clk) begin
         if (reset) tWR_cnt <= 0;
-        else if (sdram_cmd == CMD_WRITE) tWR_cnt <= tWR - 1;
+        else if (sdram_cmd == CMD_WRITE || state == WRITE_BURST) tWR_cnt <= tWR;
         else if (|tWR_cnt) tWR_cnt <= tWR_cnt - 1;
     end
 

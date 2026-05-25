@@ -19,6 +19,7 @@ module cache #(
     input  logic [3:0]  core_write_val,
     input  logic [31:0] core_write_data,
 
+    output logic        fill_in_progress,
     output logic [31:0] core_read_data,
     output logic        core_read_data_val,
 
@@ -171,6 +172,7 @@ module cache #(
 
         incr_fill_addr = 1'b0;
         trigger_fill = 1'b0;
+        fill_in_progress = 1'b0;
         fill_complete = 1'b0;
 
         ts_rd_addr = core_index;
@@ -218,11 +220,9 @@ module cache #(
             end
 
             WRITE : begin
-                if (tag_hit) begin
-                    ds_wr_en = wr_strb_buffer;
-                    ds_wr_addr = {buffer_index, buffer_word_os};
-                    ds_wr_data = write_data_buffer;
-                end 
+                ds_wr_en = {4{tag_hit}} & wr_strb_buffer;
+                ds_wr_addr = {buffer_index, buffer_word_os};
+                ds_wr_data = write_data_buffer;
 
                 m_axi.aw_valid = 1'b1;
                 m_axi.w_valid = 1'b1;
@@ -340,6 +340,7 @@ module cache #(
                 end else begin
                     m_axi.ar_valid = 1'b1;
                     trigger_fill = 1'b1;
+                    fill_in_progress = 1'b1;
                     next_state = FILL_CACHE;
                 end
             end
@@ -348,6 +349,7 @@ module cache #(
                 m_axi.r_ready = 1'b1;
                 ds_wr_addr = {fill_index, fill_word_os};
                 ds_wr_data = m_axi.r_data;
+                fill_in_progress = 1'b1;
 
                 if (m_axi.r_valid) begin
                     ds_wr_en = 4'hF;

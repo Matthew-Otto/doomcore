@@ -1,8 +1,6 @@
 // Reset synchronizer
 
-module reset_sync #(
-    parameter STRETCH = 2
-) (
+module reset_sync (
     input  logic async_reset,
     input  logic sync_clk,
     output logic sync_reset

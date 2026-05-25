@@ -17,6 +17,12 @@ module regfile (
     // Register file
     logic [31:0] regs [31:1];
 
+`ifdef VERILATOR
+    initial begin
+        regs = '{default: '0};
+    end
+`endif
+
     // fuck it, two write ports.
     always_ff @(posedge clk) begin
         if (ex_we && |ex_rd_addr) begin

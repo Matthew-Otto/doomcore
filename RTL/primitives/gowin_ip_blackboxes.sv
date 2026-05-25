@@ -1,6 +1,13 @@
 // Empty definitions to appease Slang
 
 (* blackbox *)
+module BUFG (
+    input  logic I,
+    output logic O
+);
+endmodule
+
+(* blackbox *)
 module rPLL #(
     parameter FCLKIN = "100.0",
     parameter IDIV_SEL = 0,

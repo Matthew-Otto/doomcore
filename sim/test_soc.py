@@ -37,7 +37,7 @@ async def test_soc(dut):
     dut.sclk_pll_lock.value = 1
     await FallingEdge(reset)
 
-    await ClockCycles(clk, 50000)
+    await ClockCycles(clk, 5000000)
     await ClockCycles(clk, 10)
 
 

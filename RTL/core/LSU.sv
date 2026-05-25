@@ -65,7 +65,7 @@ module LSU #(
     end
     
     assign load = valid && is_load_op;
-    assign ld_inflight = pending_load && ~ld_valid;
+    //assign ld_inflight = pending_load && ~ld_valid; // BOZO
 
     always_comb begin
         case (read_byte_of)
@@ -119,7 +119,7 @@ module LSU #(
     end
     
     assign store = is_store_op && valid && ~ld_inflight;
-    assign wr_en = {4{store}} & we_mask;
+    assign wr_en = {4{store}} & we_mask & {4{!(ls_addr == 32'h40000000)}}; // BOZO remove addr mask
 
 
     ////////////////////////////////////////////////////////////////////////
@@ -142,6 +142,7 @@ module LSU #(
         .core_read_val(load),
         .core_write_val(wr_en),
         .core_write_data(aligned_write_data),
+        .fill_in_progress(ld_inflight),
         .core_read_data,
         .core_read_data_val(ld_valid),
         .m_axi(dcache_port)
@@ -150,10 +151,10 @@ module LSU #(
 
 
     logic writeuart;
-    assign writeuart = wr_en[0] && (ls_addr == 32'h40000000);
+    assign writeuart = store && we_mask[0] && (ls_addr == 32'h40000000);
 
     uart_tx #(
-        .CLK_RATE(120_000_000),
+        .CLK_RATE(100_000_000),
         .BAUD_RATE(1000000)
     ) uart (
         .clk(clk),

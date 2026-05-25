@@ -38,35 +38,24 @@ module top #(
     //// Clocks ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
-    logic sys_clk;  // main system clock
-    logic p_clk;     // HDMI pixel clock
-    logic s_clk;     // HDMI serializer clock (10 bit / p_clk) (DDR)
+    logic sys_clk;  // Main system clock
+    logic sys_clk_gen;
+    logic p_clk;    // HDMI pixel clock
+    logic s_clk;    // HDMI serializer clock (10 bit / p_clk) (DDR)
+    logic s_clk_gen;
 
     logic sys_pll_lock;
     logic sclk_pll_lock;
 
-    localparam SYS_CLK_FREQ = 120_000_000;
+    localparam SYS_CLK_FREQ = 81_000_000;
 
 `ifndef VERILATOR
     //// System Clock Generator
     rPLL #(
         .FCLKIN("27.0"),
-
-        // .IDIV_SEL(8),    // -> PFD = 3.0 MHz (range: 3-500 MHz)
-        // .FBDIV_SEL(52), // -> CLKOUT = 159.0 MHz (range: 3.90625-625 MHz)
-        // .ODIV_SEL(4) // -> VCO = 636.0 MHz (range: 500-1250 MHz)
-        
-        // .IDIV_SEL(8), // -> PFD = 3.0 MHz (range: 3-500 MHz)
-        // .FBDIV_SEL(39), // -> CLKOUT = 120.0 MHz (range: 3.90625-625 MHz)
-        // .ODIV_SEL(8) // -> VCO = 960.0 MHz (range: 500-1250 MHz)
-
-        .IDIV_SEL(6), // -> PFD = 3.857142857142857 MHz (range: 3-500 MHz)
-        .FBDIV_SEL(25), // -> CLKOUT = 100.28571428571429 MHz (range: 3.90625-625 MHz)
-        .ODIV_SEL(8) // -> VCO = 802.2857142857143 MHz (range: 500-1250 MHz)
-
-        // .IDIV_SEL(0), // -> PFD = 27.0 MHz (range: 3-500 MHz)
-        // .FBDIV_SEL(2), // -> CLKOUT = 81.0 MHz (range: 3.90625-625 MHz)
-        // .ODIV_SEL(8) // -> VCO = 648.0 MHz (range: 500-1250 MHz)
+        .IDIV_SEL(0), // -> PFD = 27.0 MHz (range: 3-500 MHz)
+        .FBDIV_SEL(2), // -> CLKOUT = 81.0 MHz (range: 3.90625-625 MHz)
+        .ODIV_SEL(8) // -> VCO = 648.0 MHz (range: 500-1250 MHz)
     ) sysclk_pll (
         .CLKOUTP(),
         .CLKOUTD(),
@@ -81,9 +70,11 @@ module top #(
         .DUTYDA(4'b0),
         .FDLY(4'b0),
         .CLKIN(clk),
-        .CLKOUT(sys_clk),
+        .CLKOUT(sys_clk_gen),
         .LOCK(sys_pll_lock)
     );
+
+    BUFG sys_clk_buf (.I(sys_clk_gen), .O(sys_clk));
 
     //// Serial Clock Generator
     rPLL #(
@@ -105,9 +96,11 @@ module top #(
         .DUTYDA(4'b0),
         .FDLY(4'b0),
         .CLKIN(clk),    // 27.0 MHz
-        .CLKOUT(s_clk), // 126.0 MHz
+        .CLKOUT(s_clk_gen), // 126.0 MHz
         .LOCK(sclk_pll_lock)
     );
+
+    BUFG s_clk_buf (.I(s_clk_gen), .O(s_clk));
 
     //// Pixel Clock Generator
     CLKDIV #(
@@ -145,39 +138,36 @@ module top #(
     //// Resets ////////////////////////////////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
 
+    logic async_reset;
     logic sys_clk_rst;
     logic p_clk_rst;
-    logic s_clk_rst;
 
     logic reset_i;
 
     init_rst #(
-        .DELAY(50)
+        .DELAY(100)
     ) init_rst_i (
         .clk(sys_clk),
         .pll_lock(sys_pll_lock && sclk_pll_lock),
         .rst_out(reset_i)
     );
 
-    assign sys_clk_rst = reset_i | btn1_db; 
+    assign async_reset = reset_i | btn1_db; 
 
     assign led[0] = ~sys_clk_rst;
 
-    reset_sync #(
-        .STRETCH(10)
-    ) display_reset_gen (
-        .async_reset(sys_clk_rst),
+    reset_sync sys_reset_gen (
+        .async_reset(async_reset),
+        .sync_clk(sys_clk),
+        .sync_reset(sys_clk_rst)
+    );
+
+    reset_sync display_reset_gen (
+        .async_reset(async_reset),
         .sync_clk(p_clk),
         .sync_reset(p_clk_rst)
     );
 
-    reset_sync #(
-        .STRETCH(10)
-    ) serial_reset_gen (
-        .async_reset(sys_clk_rst),
-        .sync_clk(s_clk),
-        .sync_reset(s_clk_rst)
-    );
 
     //// Manual Reset Duplication
     (* keep = "true" *) logic sys_clk_rst_core;
@@ -358,7 +348,6 @@ module top #(
         .p_clk,
         .p_clk_rst,
         .s_clk,
-        .s_clk_rst,
         .serial_pclk(tmds_clk_p),
         .serial_blue(tmds_d0_p),
         .serial_green(tmds_d1_p),

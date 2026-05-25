@@ -113,7 +113,6 @@ async def test_verify(dut):
 
             # BOZO
             ref[5] = 0
-            ref[11] = 0
 
             diffs = []
             for i in range(len(sim)):
@@ -183,10 +182,10 @@ def test_runner():
         test_module=Path(__file__).stem,
         waves=True,
         gui=True,
-        # test_args=[
-        #     "+verilator+rand+reset+2",
-        #     "+verilator+seed+5",
-        # ],
+        test_args=[
+            "+verilator+rand+reset+2",
+            "+verilator+seed+5",
+        ],
     )
 
 if __name__ == "__main__":
