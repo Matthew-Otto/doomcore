@@ -28,8 +28,9 @@ async def test_soc(dut):
     # init system
     sdram = SDRAM(dut.sdram_i.sdram_controller_i, clk)
     sys_clk_ps = round((1/81_000_000) * 1e12)
+    p_clk_ps = round((1/81_000_000) * 1e12) #39.682 ns
     cocotb.start_soon(Clock(clk, sys_clk_ps, unit="ps").start())
-    cocotb.start_soon(Clock(pclk, 39.682, unit="ns").start())
+    cocotb.start_soon(Clock(pclk, p_clk_ps, unit="ps").start())
 
     cocotb.start_soon(log_sim_speed(dut, clk))
     dut.btn1_db.value = 0
@@ -37,7 +38,7 @@ async def test_soc(dut):
     dut.sclk_pll_lock.value = 1
     await FallingEdge(reset)
 
-    await ClockCycles(clk, 3000000)
+    await ClockCycles(clk, 5000000)
     await ClockCycles(clk, 10)
 
 

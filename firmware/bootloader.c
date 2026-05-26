@@ -71,7 +71,6 @@ void __attribute__((noreturn)) bootloader(void) {
             }
 
             asm("wfi");
-            asm("wfi");
         }
     }
 }

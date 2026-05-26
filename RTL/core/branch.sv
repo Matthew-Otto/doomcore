@@ -56,6 +56,6 @@ module BRU (
         endcase
     end
 
-    assign branch = valid && ~stall && is_ctrl_op && (branch_eval || is_jump_op);
+    assign branch = valid && is_ctrl_op && (branch_eval || is_jump_op);
 
 endmodule : BRU
